@@ -42,7 +42,7 @@
 
   </section>
 
-  <section class="recommend">
+    <section class="recommend">
     <h2>こんな人におすすめ</h2>
 
     <div class="recommend-list">
@@ -51,5 +51,10 @@
       <p>自分の接客を客観的に振り返りたい方</p>
     </div>
   </section>
+
+  <div class="auth-links">
+    <%= link_to "新規登録", new_user_registration_path, class: "auth-button" %>
+    <%= link_to "ログイン", new_user_session_path, class: "auth-button" %>
+  </div>
 
 </div>
