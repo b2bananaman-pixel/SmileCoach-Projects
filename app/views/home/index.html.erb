@@ -52,9 +52,12 @@
     </div>
   </section>
 
-  <div class="auth-links">
-    <%= link_to "新規登録", new_user_registration_path, class: "auth-button" %>
-    <%= link_to "ログイン", new_user_session_path, class: "auth-button" %>
+<% if user_signed_in? %>
+  <%= button_to "ログアウト", destroy_user_session_path, method: :delete, class: "auth-button" %>
+<% else %>
+  <%= link_to "新規登録", new_user_registration_path, class: "auth-button" %>
+  <%= link_to "ログイン", new_user_session_path, class: "auth-button" %>
+<% end %>
   </div>
 
 </div>
