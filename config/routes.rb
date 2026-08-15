@@ -1,5 +1,5 @@
 Rails.application.routes.draw do
-  resources :practice_themes, only: [:index, :show]
+  resources :practice_themes, only: [ :index, :show ]
   devise_for :users
 
   get "home/index"
