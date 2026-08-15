@@ -1,0 +1,2 @@
+class PracticeTheme < ApplicationRecord
+end

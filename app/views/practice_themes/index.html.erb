@@ -1,0 +1,25 @@
+<div class="container py-5">
+  <h1 class="text-center mb-5">練習テーマを選択</h1>
+
+  <div class="row g-4">
+    <% @practice_themes.each do |practice_theme| %>
+      <div class="col-md-6 col-lg-3">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body text-center">
+            <h2 class="card-title h4 mb-3">
+              <%= practice_theme.name %>
+            </h2>
+
+            <p class="card-text">
+              <%= practice_theme.description %>
+            </p>
+
+            <%= link_to "このテーマで練習する",
+                        practice_theme_path(practice_theme),
+                        class: "btn btn-secondary" %>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>
