@@ -17,7 +17,14 @@
     <%= javascript_importmap_tags %>
   </head>
 
-  <body>
+    <body>
+    <nav class="navbar navbar-light bg-light border-bottom">
+      <div class="container">
+        <%= link_to "Smile Coach", root_path, class: "navbar-brand" %>
+        <%= link_to "ホーム", root_path, class: "btn btn-outline-secondary btn-sm" %>
+      </div>
+    </nav>
+
     <% flash.each do |type, message| %>
       <div class="container mt-3">
         <div class="alert <%= type == "alert" ? "alert-danger" : "alert-success" %>" role="alert">
