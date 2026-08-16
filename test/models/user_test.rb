@@ -8,6 +8,6 @@ class UserTest < ActiveSupport::TestCase
     )
 
     assert_not user.valid?
-    assert_includes user.errors[:name], "can't be blank"
+    assert_includes user.errors[:name], "を入力してください"
   end
 end
