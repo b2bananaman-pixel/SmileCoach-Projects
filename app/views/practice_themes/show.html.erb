@@ -1,15 +1,67 @@
 <div class="container py-5">
-  <h1 class="text-center mb-4">
-    <%= @practice_theme.name %>
-  </h1>
+  <h1 class="text-center mb-5">接客練習</h1>
 
-  <p class="text-center">
-    <%= @practice_theme.description %>
-  </p>
+  <div class="row justify-content-center">
+    <div class="col-md-8">
 
-  <div class="text-center mt-4">
-    <button class="btn btn-secondary">
-      録画開始
-    </button>
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h2 class="card-title mb-4">
+            練習テーマ：<%= @practice_theme.name %>
+          </h2>
+
+          <h3 class="h5">お客様像・接客条件</h3>
+          <p class="card-text">
+            <%= @practice_theme.description %>
+          </p>
+        </div>
+      </div>
+
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-4">
+
+          <h2 class="h5 mb-3">録画状態</h2>
+
+          <p id="recording-status" class="mb-4">
+            停止中
+          </p>
+
+          <button id="start-recording"
+                  class="btn btn-primary me-2">
+            録画開始
+          </button>
+
+          <button id="stop-recording"
+                  class="btn btn-secondary"
+                  disabled>
+            録画停止
+          </button>
+
+        </div>
+      </div>
+
+    </div>
   </div>
 </div>
+
+<script>
+  document.addEventListener("turbo:load", () => {
+    const startButton = document.getElementById("start-recording");
+    const stopButton = document.getElementById("stop-recording");
+    const status = document.getElementById("recording-status");
+
+    if (!startButton || !stopButton || !status) return;
+
+    startButton.addEventListener("click", () => {
+      status.textContent = "録画中";
+      startButton.disabled = true;
+      stopButton.disabled = false;
+    });
+
+    stopButton.addEventListener("click", () => {
+      status.textContent = "停止中";
+      startButton.disabled = false;
+      stopButton.disabled = true;
+    });
+  });
+</script>
