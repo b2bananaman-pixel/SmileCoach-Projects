@@ -22,9 +22,15 @@
       <div class="container">
         <%= link_to "Smile Coach", root_path, class: "navbar-brand" %>
 
-        <% if user_signed_in? %>
-          <%= button_to "ログアウト", destroy_user_session_path, method: :delete, class: "btn btn-outline-secondary btn-sm" %>
-        <% end %>
+        <div class="d-flex gap-2">
+          <% unless current_page?(root_path) %>
+            <%= link_to "ホーム", root_path, class: "btn btn-outline-secondary btn-sm" %>
+          <% end %>
+
+          <% if user_signed_in? %>
+            <%= button_to "ログアウト", destroy_user_session_path, method: :delete, class: "btn btn-outline-secondary btn-sm" %>
+          <% end %>
+        </div>
       </div>
     </nav>
 
