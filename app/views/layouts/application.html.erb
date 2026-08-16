@@ -18,6 +18,14 @@
   </head>
 
   <body>
+    <% flash.each do |type, message| %>
+      <div class="container mt-3">
+        <div class="alert <%= type == "alert" ? "alert-danger" : "alert-success" %>" role="alert">
+          <%= message %>
+        </div>
+      </div>
+    <% end %>
+
     <%= yield %>
   </body>
 </html>

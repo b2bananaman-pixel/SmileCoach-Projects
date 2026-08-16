@@ -1,7 +1,7 @@
-<div class="home-container">
+<div class="container text-center py-5">
 
   <section class="hero">
-    <h1>Smile Coach</h1>
+    <h1 class="brand-title">Smile Coach😊</h1>
 
     <p class="hero-lead">
       AIと一緒に、接客力を磨こう。
@@ -14,36 +14,42 @@
     </p>
   </section>
 
-  <section class="features">
+  <section class="row mt-5">
 
-    <div class="feature">
+  <div class="col-md-4">
+    <div class="card h-100 shadow-sm p-4 text-center">
       <div class="feature-icon">😊</div>
-      <h2>笑顔を分析</h2>
+      <h2 class="mb-3">笑顔を分析</h2>
       <p>
         接客中の笑顔をAIが分析します。
       </p>
     </div>
+  </div>
 
-    <div class="feature">
+  <div class="col-md-4">
+    <div class="card h-100 shadow-sm p-4 text-center">
       <div class="feature-icon">🎤</div>
-      <h2>話し方を分析</h2>
+      <h2 class="mb-3">話し方を分析</h2>
       <p>
         話す速さや声の特徴を分析します。
       </p>
     </div>
+  </div>
 
-    <div class="feature">
+  <div class="col-md-4">
+    <div class="card h-100 shadow-sm p-4 text-center">
       <div class="feature-icon">📈</div>
-      <h2>成長を振り返る</h2>
+      <h2 class="mb-3">成長を振り返る</h2>
       <p>
         練習結果を記録して、成長を確認できます。
       </p>
     </div>
+  </div>
 
-  </section>
+</section>
 
-  <section class="recommend">
-    <h2>こんな人におすすめ</h2>
+    <section class="mt-5">
+    <h2 class="mb-3">こんな人におすすめ</h2>
 
     <div class="recommend-list">
       <p>接客経験が少ない新人スタッフ</p>
@@ -51,5 +57,13 @@
       <p>自分の接客を客観的に振り返りたい方</p>
     </div>
   </section>
+
+<% if user_signed_in? %>
+  <%= button_to "ログアウト", destroy_user_session_path, method: :delete, class: "auth-button" %>
+<% else %>
+  <%= link_to "新規登録", new_user_registration_path, class: "btn btn-secondary btn-sm py-1" %>
+  <%= link_to "ログイン", new_user_session_path, class: "btn btn-secondary btn-sm py-1" %>
+<% end %>
+  </div>
 
 </div>

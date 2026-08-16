@@ -1,0 +1,44 @@
+ja:
+  errors:
+    messages:
+      blank: "を入力してください"
+      taken: "はすでに使用されています"
+      too_short: "は%{count}文字以上で入力してください"
+      confirmation: "とパスワードの入力が一致しません"
+      invalid: "は不正な値です"
+      not_saved:
+        one: "1件のエラーがあるため、保存できませんでした。"
+        other: "%{count}件のエラーがあるため、保存できませんでした。"
+
+  activerecord:
+    attributes:
+      user:
+        name: "名前"
+        email: "メールアドレス"
+        password: "パスワード"
+        password_confirmation: "パスワード確認"
+
+  devise:
+    failure:
+      invalid: "メールアドレスまたはパスワードが違います。"
+      unauthenticated: "ログインしてください。"
+      already_authenticated: "すでにログインしています。"
+
+    sessions:
+      signed_in: "ログインしました。"
+      signed_out: "ログアウトしました。"
+
+    passwords:
+      send_instructions: "パスワード再設定の案内をメールで送信しました。"
+      updated: "パスワードが変更されました。"
+      updated_not_active: "パスワードが変更されました。"
+      user:
+        send_instructions: "パスワード再設定の案内をメールで送信しました。"
+
+    errors:
+      messages:
+        blank: "を入力してください"
+        taken: "はすでに使用されています"
+        too_short: "は%{count}文字以上で入力してください"
+        confirmation: "とパスワードの入力が一致しません"
+        invalid: "は不正な値です"
