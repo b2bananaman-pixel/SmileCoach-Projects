@@ -10,10 +10,25 @@
             練習テーマ：<%= @practice_theme.name %>
           </h2>
 
-          <h3 class="h5">お客様像・接客条件</h3>
-          <p class="card-text">
-            <%= @practice_theme.description %>
-          </p>
+          <div class="border rounded p-3 mb-4">
+            <h3 class="h5 mb-3">👤 お客様像</h3>
+
+            <p class="card-text mb-0">
+              <%= simple_format(
+                @practice_theme.description.split("接客条件：").first.sub("お客様像：", "")
+              ) %>
+            </p>
+          </div>
+
+          <div class="border rounded p-3">
+            <h3 class="h5 mb-3">🎯 今回の接客ポイント</h3>
+
+            <p class="card-text mb-0">
+              <%= simple_format(
+                @practice_theme.description.split("接客条件：").last
+              ) %>
+            </p>
+          </div>
         </div>
       </div>
 
