@@ -5,4 +5,19 @@ class HomeControllerTest < ActionDispatch::IntegrationTest
     get home_index_url
     assert_response :success
   end
+
+  test "logged in user can see practice theme link" do
+    user = users(:one)
+
+    post user_session_url, params: {
+      user: {
+        email: user.email,
+        password: "password"
+      }
+    }
+
+    get home_index_url
+    assert_response :success
+    assert_select "a[href='#{practice_themes_path}']", text: "練習テーマを選択する"
+  end
 end
