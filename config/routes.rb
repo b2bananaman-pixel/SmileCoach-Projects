@@ -1,5 +1,7 @@
 Rails.application.routes.draw do
-  resources :practice_themes, only: [ :index, :show ]
+  resources :practice_themes, only: [ :index, :show ] do
+    post :create_practice, on: :member
+  end
   devise_for :users
 
   get "home/index"

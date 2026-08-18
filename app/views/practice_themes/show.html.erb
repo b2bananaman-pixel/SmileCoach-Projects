@@ -70,7 +70,6 @@
     let mediaRecorder;
     let audioStream;
     let audioChunks = [];
-    let recordedAudio;
 
     startButton.addEventListener("click", async () => {
       try {
@@ -87,8 +86,8 @@
           }
         });
 
-        mediaRecorder.addEventListener("stop", () => {
-          recordedAudio = new Blob(audioChunks, {
+        mediaRecorder.addEventListener("stop", async () => {
+          const recordedAudio = new Blob(audioChunks, {
             type: "audio/webm"
           });
 
@@ -96,13 +95,45 @@
           console.log("録音データサイズ:", recordedAudio.size, "bytes");
 
           const formData = new FormData();
+
           formData.append(
             "audio",
             recordedAudio,
             "practice_audio.webm"
           );
 
-          console.log("解析処理へ渡すデータを準備しました:", formData.get("audio"));
+          console.log(
+            "録音データをサーバーへ送信します:",
+            formData.get("audio")
+          );
+
+          try {
+            const response = await fetch(
+              "<%= create_practice_practice_theme_path(@practice_theme) %>",
+              {
+                method: "POST",
+                headers: {
+                  "X-CSRF-Token": document.querySelector(
+                    meta[name=csrf-token]
+                  ).content
+                },
+                body: formData
+              }
+            );
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+              console.log("Practiceを作成しました:", data.practice_id);
+              status.textContent = "録音を保存しました";
+            } else {
+              console.error("Practiceの保存に失敗しました:", data);
+              status.textContent = "録音の保存に失敗しました";
+            }
+          } catch (error) {
+            console.error("サーバーへの送信に失敗しました:", error);
+            status.textContent = "録音の保存に失敗しました";
+          }
         });
 
         mediaRecorder.start();
@@ -123,7 +154,7 @@
 
       audioStream.getTracks().forEach((track) => track.stop());
 
-      status.textContent = "停止中";
+      status.textContent = "保存中...";
       startButton.disabled = false;
       stopButton.disabled = true;
     });

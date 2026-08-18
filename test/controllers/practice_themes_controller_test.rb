@@ -2,6 +2,10 @@ require "test_helper"
 
 class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
   setup do
+    @user = users(:one)
+
+    sign_in @user
+
     @practice_theme = PracticeTheme.create!(
       name: "家電の提案販売",
       description: "お客様像：冷蔵庫売り場に来店している30代くらいの男女。現在使用している冷蔵庫が古くなり、買い替えを検討している。\n\n接客条件：\n① お客様へ明るく声掛けをする\n② 現在の利用状況を確認する\n③ お客様に合ったサービスを提案する"
@@ -20,6 +24,7 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     get practice_theme_url(@practice_theme)
 
     assert_response :success
+    puts response.body
     assert_select "h1", "接客練習"
     assert_select "h2", "練習テーマ：家電の提案販売"
     assert_select "h3", "👤 お客様像"
