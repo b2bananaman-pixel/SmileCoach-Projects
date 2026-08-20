@@ -21,6 +21,7 @@ services:
       DATABASE_HOST: db
       DATABASE_USERNAME: postgres
       DATABASE_PASSWORD: password
+      GROQ_API_KEY: ${GROQ_API_KEY}
 
 volumes:
   postgres_data:
