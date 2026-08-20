@@ -114,8 +114,8 @@
                 method: "POST",
                 headers: {
                   "X-CSRF-Token": document.querySelector(
-                    meta[name=csrf-token]
-                  ).content
+                     'meta[name="csrf-token"]'
+                ).content
                 },
                 body: formData
               }
