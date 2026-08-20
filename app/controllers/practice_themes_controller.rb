@@ -20,8 +20,25 @@ class PracticeThemesController < ApplicationController
     practice.audio.attach(params[:audio])
     practice.save!
 
-    render json: { success: true, practice_id: practice.id }
+    transcription_result = GroqTranscriptionService.new(practice.audio).call
+    practice.update!(transcription: transcription_result["text"])
+
+    render json: {
+      success: true,
+      practice_id: practice.id,
+      transcription: practice.transcription
+    }
   rescue ActiveRecord::RecordInvalid => e
-    render json: { success: false, errors: e.record.errors.full_messages }, status: :unprocessable_entity
+    render json: {
+      success: false,
+      errors: e.record.errors.full_messages
+    }, status: :unprocessable_entity
+  rescue StandardError => e
+    Rails.logger.error("文字起こしに失敗しました: #{e.message}")
+
+    render json: {
+      success: false,
+      errors: [ "文字起こしに失敗しました" ]
+    }, status: :unprocessable_entity
   end
 end
