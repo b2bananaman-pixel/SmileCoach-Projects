@@ -14,7 +14,8 @@ class PracticeThemesController < ApplicationController
 
     practice = Practice.new(
       user: current_user,
-      practice_theme: practice_theme
+      practice_theme: practice_theme,
+      duration: params[:duration]
     )
 
     practice.audio.attach(params[:audio])
