@@ -1,0 +1,33 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  practice: one
+  total_score: 1
+  smile_score: 1
+  voice_brightness: 1.5
+  voice_brightness_score: 1
+  voice_clarity: 1.5
+  voice_clarity_score: 1
+  speech_speed: 1.5
+  speech_speed_score: 1
+  filler_count: 1
+  filler_score: 1
+  volume: 1.5
+  volume_score: 1
+  ai_comment: MyText
+
+two:
+  practice: two
+  total_score: 1
+  smile_score: 1
+  voice_brightness: 1.5
+  voice_brightness_score: 1
+  voice_clarity: 1.5
+  voice_clarity_score: 1
+  speech_speed: 1.5
+  speech_speed_score: 1
+  filler_count: 1
+  filler_score: 1
+  volume: 1.5
+  volume_score: 1
+  ai_comment: MyText

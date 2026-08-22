@@ -70,6 +70,8 @@
     let mediaRecorder;
     let audioStream;
     let audioChunks = [];
+    let recordingStartTime;
+    let recordingDuration;
 
     startButton.addEventListener("click", async () => {
       try {
@@ -102,6 +104,7 @@
             "practice_audio.webm"
           );
 
+          formData.append("duration", recordingDuration);
           console.log(
             "録音データをサーバーへ送信します:",
             formData.get("audio")
@@ -135,7 +138,7 @@
             status.textContent = "録音の保存に失敗しました";
           }
         });
-
+        recordingStartTime = Date.now();
         mediaRecorder.start();
 
         status.textContent = "録音中";
@@ -150,6 +153,8 @@
     stopButton.addEventListener("click", () => {
       if (!mediaRecorder) return;
 
+      recordingDuration = (Date.now() - recordingStartTime) / 1000;
+      console.log("録音時間:", recordingDuration, "秒");
       mediaRecorder.stop();
 
       audioStream.getTracks().forEach((track) => track.stop());

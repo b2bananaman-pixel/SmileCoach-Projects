@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_20_124940) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_22_091758) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -42,6 +42,26 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_20_124940) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "analyses", force: :cascade do |t|
+    t.bigint "practice_id", null: false
+    t.integer "total_score"
+    t.integer "smile_score"
+    t.float "voice_brightness"
+    t.integer "voice_brightness_score"
+    t.float "voice_clarity"
+    t.integer "voice_clarity_score"
+    t.float "speech_speed"
+    t.integer "speech_speed_score"
+    t.integer "filler_count"
+    t.integer "filler_score"
+    t.float "volume"
+    t.integer "volume_score"
+    t.text "ai_comment"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["practice_id"], name: "index_analyses_on_practice_id"
+  end
+
   create_table "practice_themes", force: :cascade do |t|
     t.string "name"
     t.text "description"
@@ -55,6 +75,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_20_124940) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.text "transcription"
+    t.float "duration"
     t.index ["practice_theme_id"], name: "index_practices_on_practice_theme_id"
     t.index ["user_id"], name: "index_practices_on_user_id"
   end
@@ -74,6 +95,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_20_124940) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "analyses", "practices"
   add_foreign_key "practices", "practice_themes"
   add_foreign_key "practices", "users"
 end
