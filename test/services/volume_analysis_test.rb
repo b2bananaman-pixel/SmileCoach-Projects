@@ -4,7 +4,9 @@ class VolumeAnalysisTest < ActiveSupport::TestCase
   test "音声データから声量を取得できる" do
     practice = practices(:one)
 
-    File.open("/tmp/test_volume.webm") do |file|
+    fixture_path = Rails.root.join("test/fixtures/files/test_volume.webm")
+
+    File.open(fixture_path) do |file|
       practice.audio.attach(
         io: file,
         filename: "test_volume.webm",
