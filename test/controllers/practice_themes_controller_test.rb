@@ -24,7 +24,6 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     get practice_theme_url(@practice_theme)
 
     assert_response :success
-    puts response.body
     assert_select "h1", "接客練習"
     assert_select "h2", "練習テーマ：家電の提案販売"
     assert_select "h3", "👤 お客様像"
@@ -38,5 +37,44 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     assert_select "#stop-recording", "録音停止"
     assert_select "#start-recording:not([disabled])"
     assert_select "#stop-recording[disabled]"
+  end
+
+  test "録音データから声量を分析して保存できる" do
+    audio_file = fixture_file_upload(
+      "test_volume.webm",
+      "audio/webm"
+    )
+
+    transcription_service = Minitest::Mock.new
+    transcription_service.expect(
+      :call,
+      { "text" => "こんにちは今日はいい天気ですね" }
+    )
+
+    GroqTranscriptionService.stub(
+      :new,
+      ->(_audio) { transcription_service }
+    ) do
+      assert_difference("Practice.count", 1) do
+        assert_difference("Analysis.count", 1) do
+          post create_practice_practice_theme_url(@practice_theme),
+            params: {
+              audio: audio_file,
+              duration: 1.0
+            }
+        end
+      end
+    end
+
+    assert_response :success
+
+    analysis = Analysis.order(:created_at).last
+
+    assert_not_nil analysis
+    assert_equal @user, analysis.practice.user
+    assert_equal @practice_theme, analysis.practice.practice_theme
+    assert_in_delta(-21.1, analysis.volume, 0.5)
+
+    transcription_service.verify
   end
 end
