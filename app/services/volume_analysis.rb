@@ -8,7 +8,7 @@ class VolumeAnalysis
   def volume
     return 0.0 unless @audio&.attached?
 
-    Tempfile.create(["volume_analysis", ".webm"]) do |tempfile|
+    Tempfile.create([ "volume_analysis", ".webm" ]) do |tempfile|
       tempfile.binmode
       tempfile.write(@audio.download)
       tempfile.flush
