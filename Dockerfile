@@ -32,4 +32,4 @@ ENTRYPOINT ["entrypoint.sh"]
 EXPOSE 3000
 
 # Rails サーバーを起動
-CMD ["sh", "-c", "bundle exec rails server -b 0.0.0.0 -p ${PORT:-3000}"]
+CMD ["sh", "-c", "RAILS_ENV=production bundle exec rails server -b 0.0.0.0 -p ${PORT:-3000}"]
