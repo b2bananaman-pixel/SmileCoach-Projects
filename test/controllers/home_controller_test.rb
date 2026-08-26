@@ -21,4 +21,12 @@ class HomeControllerTest < ActionDispatch::IntegrationTest
     assert_select "a[href='#{practice_themes_path}']", text: "練習テーマを選択する"
     assert_select "form[action='#{destroy_user_session_path}']"
   end
+
+  test "新規登録とログインへのリンクが表示される" do
+    get home_index_url
+
+    assert_response :success
+    assert_select "a", text: "新規登録"
+    assert_select "a", text: "ログイン"
+  end
 end
