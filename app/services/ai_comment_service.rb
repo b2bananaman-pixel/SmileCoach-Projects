@@ -2,7 +2,7 @@ require "net/http"
 require "uri"
 require "json"
 
-class AICommentService
+class AiCommentService
   API_URL = "https://api.groq.com/openai/v1/chat/completions"
   MODEL = "openai/gpt-oss-20b"
 

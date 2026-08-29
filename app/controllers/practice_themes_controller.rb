@@ -47,7 +47,7 @@ class PracticeThemesController < ApplicationController
       filler_score: speech_analysis.filler_score
     )
     analysis = practice.analysis
-    ai_comment = AICommentService.new(analysis).call
+    ai_comment = AiCommentService.new(analysis).call
     analysis.update!(ai_comment: ai_comment)
 
     render json: {

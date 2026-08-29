@@ -1,6 +1,5 @@
 
 require "test_helper"
-require_relative "../../app/services/ai_comment_service"
 
 class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
   setup do
@@ -140,7 +139,7 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
       :new,
       ->(_audio) { transcription_service }
     ) do
-      AICommentService.stub(
+      AiCommentService.stub(
         :new,
         ->(_analysis) { ai_comment_service }
       ) do

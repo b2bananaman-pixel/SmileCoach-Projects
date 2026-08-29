@@ -1,7 +1,7 @@
 require "test_helper"
 require_relative "../../app/services/ai_comment_service"
 
-class AICommentServiceTest < ActiveSupport::TestCase
+class AiCommentServiceTest < ActiveSupport::TestCase
   setup do
     @analysis = analyses(:one)
     @original_api_key = ENV["GROQ_API_KEY"]
@@ -36,7 +36,7 @@ class AICommentServiceTest < ActiveSupport::TestCase
       use_ssl: true
     )
 
-    service = AICommentService.new(@analysis, http_client: http_client)
+    service = AiCommentService.new(@analysis, http_client: http_client)
 
     assert_equal(
       "フィラーを減らすため、一呼吸おいてから話す練習をしましょう。",
@@ -61,7 +61,7 @@ class AICommentServiceTest < ActiveSupport::TestCase
       use_ssl: true
     )
 
-    service = AICommentService.new(@analysis, http_client: http_client)
+    service = AiCommentService.new(@analysis, http_client: http_client)
 
     error = assert_raises(RuntimeError) do
       service.call
