@@ -48,6 +48,7 @@ class PracticeThemesController < ApplicationController
     render json: {
       success: true,
       practice_id: practice.id,
+      analysis_id: practice.analysis.id,
       transcription: practice.transcription
     }
   rescue ActiveRecord::RecordInvalid => e

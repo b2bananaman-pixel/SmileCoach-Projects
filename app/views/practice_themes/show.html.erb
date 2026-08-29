@@ -128,7 +128,9 @@
 
             if (response.ok && data.success) {
               console.log("Practiceを作成しました:", data.practice_id);
-              status.textContent = "録音を保存しました";
+              console.log("Analysisを作成しました:", data.analysis_id);
+
+              window.location.href = `/analyses/${data.analysis_id}`;
             } else {
               console.error("Practiceの保存に失敗しました:", data);
               status.textContent = "録音の保存に失敗しました";
