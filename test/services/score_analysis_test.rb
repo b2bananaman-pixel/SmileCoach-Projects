@@ -67,13 +67,14 @@ class ScoreAnalysisTest < ActiveSupport::TestCase
     assert_equal 20, analysis.volume_score
   end
 
-  test "総合点は話速と声量の平均になる" do
+  test "総合点は話速・フィラー・声量の平均になる" do
     analysis = ScoreAnalysis.new(
       speech_speed: 3.4,
-      volume: -22.0
+      volume: -22.0,
+      filler_score: 100
     )
 
-    assert_equal 90, analysis.total_score
+    assert_equal 93, analysis.total_score
   end
 
   test "話速が分析できない場合は0点になる" do

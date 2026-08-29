@@ -1,7 +1,8 @@
 class ScoreAnalysis
-  def initialize(speech_speed:, volume:)
+  def initialize(speech_speed:, volume:, filler_score: 0)
     @speech_speed = speech_speed.to_f
     @volume = volume.to_f
+    @filler_score = filler_score.to_i
   end
 
   def speech_speed_score
@@ -41,6 +42,6 @@ class ScoreAnalysis
   end
 
   def total_score
-    ((speech_speed_score + volume_score) / 2.0).round
+    ((speech_speed_score + @filler_score + volume_score) / 3.0).round
   end
 end
