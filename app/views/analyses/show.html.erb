@@ -1,0 +1,76 @@
+<div class="container py-5">
+  <h1 class="text-center mb-5">分析結果</h1>
+
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+
+      <div class="card shadow-sm mb-4 text-center">
+        <div class="card-body py-4">
+          <h2 class="h4 mb-3">総合スコア</h2>
+
+          <p class="display-3 fw-bold mb-0">
+            <%= @analysis.total_score %>
+            <span class="fs-4">点</span>
+          </p>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h2 class="h4 mb-4">分析項目</h2>
+
+          <div class="border rounded p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="h5 mb-0">話速</h3>
+              <span class="fw-bold">
+                <%= @analysis.speech_speed_score %>点
+              </span>
+            </div>
+
+            <p class="mb-0 mt-2">
+              <%= @analysis.speech_speed %> 文字/秒
+            </p>
+          </div>
+
+          <div class="border rounded p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="h5 mb-0">フィラー</h3>
+              <span class="fw-bold">
+                <%= @analysis.filler_score %>点
+              </span>
+            </div>
+
+            <p class="mb-0 mt-2">
+              フィラー回数：<%= @analysis.filler_count %>回
+            </p>
+          </div>
+
+          <div class="border rounded p-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="h5 mb-0">声量</h3>
+              <span class="fw-bold">
+                <%= @analysis.volume_score %>点
+              </span>
+            </div>
+
+            <p class="mb-0 mt-2">
+              声量：<%= @analysis.volume %>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h2 class="h4 mb-3">今回の改善ポイント</h2>
+
+          <p class="mb-0">
+            話速・フィラー・声量の結果を確認して、
+            次回の接客練習に活かしましょう。
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>

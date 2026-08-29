@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  resources :analyses, only: [ :show ]
   resources :practice_themes, only: [ :index, :show ] do
     post :create_practice, on: :member
   end
