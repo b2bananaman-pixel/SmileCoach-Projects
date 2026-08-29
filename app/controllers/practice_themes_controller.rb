@@ -33,7 +33,8 @@ class PracticeThemesController < ApplicationController
 
     score_analysis = ScoreAnalysis.new(
       speech_speed: speech_analysis.speech_speed,
-      volume: volume
+      volume: volume,
+      filler_score: speech_analysis.filler_score
     )
 
     practice.create_analysis!(
@@ -42,6 +43,7 @@ class PracticeThemesController < ApplicationController
       speech_speed: speech_analysis.speech_speed,
       speech_speed_score: score_analysis.speech_speed_score,
       filler_count: speech_analysis.filler_count,
+      total_score: score_analysis.total_score,
       filler_score: speech_analysis.filler_score
     )
 
