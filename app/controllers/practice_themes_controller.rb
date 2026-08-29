@@ -23,8 +23,27 @@ class PracticeThemesController < ApplicationController
 
     transcription_result = GroqTranscriptionService.new(practice.audio).call
     practice.update!(transcription: transcription_result["text"])
+
     volume = VolumeAnalysis.new(practice.audio).volume
-    practice.create_analysis!(volume: volume)
+
+    speech_analysis = SpeechAnalysis.new(
+      transcription: practice.transcription,
+      duration: practice.duration
+    )
+
+    score_analysis = ScoreAnalysis.new(
+      speech_speed: speech_analysis.speech_speed,
+      volume: volume
+    )
+
+    practice.create_analysis!(
+      volume: volume,
+      volume_score: score_analysis.volume_score,
+      speech_speed: speech_analysis.speech_speed,
+      speech_speed_score: score_analysis.speech_speed_score,
+      filler_count: speech_analysis.filler_count,
+      filler_score: speech_analysis.filler_score
+    )
 
     render json: {
       success: true,
