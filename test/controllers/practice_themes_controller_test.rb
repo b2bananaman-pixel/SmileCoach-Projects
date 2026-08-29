@@ -1,3 +1,4 @@
+
 require "test_helper"
 
 class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
@@ -74,6 +75,44 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     assert_equal @user, analysis.practice.user
     assert_equal @practice_theme, analysis.practice.practice_theme
     assert_in_delta(-21.1, analysis.volume, 0.5)
+
+    transcription_service.verify
+  end
+
+  test "録音データからフィラーを分析して保存できる" do
+    audio_file = fixture_file_upload(
+      "test_volume.webm",
+      "audio/webm"
+    )
+
+    transcription_service = Minitest::Mock.new
+    transcription_service.expect(
+      :call,
+      { "text" => "えー今日はですねあのーおすすめの商品ですえっとこちらになります" }
+    )
+
+    GroqTranscriptionService.stub(
+      :new,
+      ->(_audio) { transcription_service }
+    ) do
+      assert_difference("Practice.count", 1) do
+        assert_difference("Analysis.count", 1) do
+          post create_practice_practice_theme_url(@practice_theme),
+            params: {
+              audio: audio_file,
+              duration: 60.0
+            }
+        end
+      end
+    end
+
+    assert_response :success
+
+    analysis = Analysis.order(:created_at).last
+
+    assert_not_nil analysis
+    assert_equal 3, analysis.filler_count
+    assert_equal 60, analysis.filler_score
 
     transcription_service.verify
   end
