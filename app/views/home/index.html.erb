@@ -61,6 +61,13 @@
     </div>
   </section>
 
+  <section class="mt-5">
+    <div class="alert alert-info text-start">
+      <strong>📌 練習履歴について</strong><br>
+      練習履歴・分析結果・録音データは、練習日から14日を過ぎると自動的に削除されます。
+    </div>
+  </section>
+
   <% if user_signed_in? %>
     <%= link_to "練習テーマを選択する", practice_themes_path, class: "btn btn-primary" %>
     <%= link_to "練習履歴を見る", practices_path, class: "btn btn-secondary" %>
