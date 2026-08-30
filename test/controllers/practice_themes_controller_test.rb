@@ -52,17 +52,28 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
       { "text" => "こんにちは今日はいい天気ですね" }
     )
 
+    ai_comment_service = Minitest::Mock.new
+    ai_comment_service.expect(
+      :call,
+      "テスト用のAIコメントです。"
+    )
+
     GroqTranscriptionService.stub(
       :new,
       ->(_audio) { transcription_service }
     ) do
-      assert_difference("Practice.count", 1) do
-        assert_difference("Analysis.count", 1) do
-          post create_practice_practice_theme_url(@practice_theme),
-            params: {
-              audio: audio_file,
-              duration: 1.0
-            }
+      AiCommentService.stub(
+        :new,
+        ->(_analysis) { ai_comment_service }
+      ) do
+        assert_difference("Practice.count", 1) do
+          assert_difference("Analysis.count", 1) do
+            post create_practice_practice_theme_url(@practice_theme),
+              params: {
+                audio: audio_file,
+                duration: 1.0
+              }
+          end
         end
       end
     end
@@ -77,6 +88,7 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     assert_in_delta(-21.1, analysis.volume, 0.5)
 
     transcription_service.verify
+    ai_comment_service.verify
   end
 
   test "録音データからフィラーを分析して保存できる" do
@@ -91,17 +103,28 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
       { "text" => "えー今日はですねあのーおすすめの商品ですえっとこちらになります" }
     )
 
+    ai_comment_service = Minitest::Mock.new
+    ai_comment_service.expect(
+      :call,
+      "テスト用のAIコメントです。"
+    )
+
     GroqTranscriptionService.stub(
       :new,
       ->(_audio) { transcription_service }
     ) do
-      assert_difference("Practice.count", 1) do
-        assert_difference("Analysis.count", 1) do
-          post create_practice_practice_theme_url(@practice_theme),
-            params: {
-              audio: audio_file,
-              duration: 60.0
-            }
+      AiCommentService.stub(
+        :new,
+        ->(_analysis) { ai_comment_service }
+      ) do
+        assert_difference("Practice.count", 1) do
+          assert_difference("Analysis.count", 1) do
+            post create_practice_practice_theme_url(@practice_theme),
+              params: {
+                audio: audio_file,
+                duration: 60.0
+              }
+          end
         end
       end
     end
@@ -115,5 +138,58 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 60, analysis.filler_score
 
     transcription_service.verify
+    ai_comment_service.verify
+  end
+
+  test "分析結果をもとにAIコメントを生成して保存できる" do
+    audio_file = fixture_file_upload(
+      "test_volume.webm",
+      "audio/webm"
+    )
+
+    transcription_service = Minitest::Mock.new
+    transcription_service.expect(
+      :call,
+      { "text" => "こんにちは今日はいい天気ですね" }
+    )
+
+    ai_comment_service = Minitest::Mock.new
+    ai_comment_service.expect(
+      :call,
+      "フィラーを減らすため、一呼吸おいてから話す練習をしましょう。"
+    )
+
+    GroqTranscriptionService.stub(
+      :new,
+      ->(_audio) { transcription_service }
+    ) do
+      AiCommentService.stub(
+        :new,
+        ->(_analysis) { ai_comment_service }
+      ) do
+        assert_difference("Practice.count", 1) do
+          assert_difference("Analysis.count", 1) do
+            post create_practice_practice_theme_url(@practice_theme),
+              params: {
+                audio: audio_file,
+                duration: 1.0
+              }
+          end
+        end
+      end
+    end
+
+    assert_response :success
+
+    analysis = Analysis.order(:created_at).last
+
+    assert_not_nil analysis
+    assert_equal(
+      "フィラーを減らすため、一呼吸おいてから話す練習をしましょう。",
+      analysis.ai_comment
+    )
+
+    transcription_service.verify
+    ai_comment_service.verify
   end
 end
