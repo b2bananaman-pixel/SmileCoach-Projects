@@ -1,5 +1,7 @@
 Rails.application.routes.draw do
-  resources :practices, only: [ :index ]
+  resources :practices, only: [ :index ] do
+    delete :audio, on: :member
+  end
   resources :analyses, only: [ :show ]
   resources :practice_themes, only: [ :index, :show ] do
     post :create_practice, on: :member

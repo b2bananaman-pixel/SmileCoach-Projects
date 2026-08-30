@@ -60,6 +60,26 @@
         </div>
       </div>
 
+      <% if @analysis.practice.audio.attached? %>
+        <div class="card shadow-sm mb-4">
+          <div class="card-body">
+            <h2 class="h4 mb-3">録音データ</h2>
+
+            <%= audio_tag url_for(@analysis.practice.audio),
+                          controls: true,
+                          class: "w-100 mb-2" %>
+
+            <%= button_to "録音データを削除",
+                          audio_practice_path(@analysis.practice),
+                          method: :delete,
+                          class: "btn btn-outline-danger",
+                          data: {
+                            turbo_confirm: "録音データを削除しますか？\n※練習履歴と分析結果は残ります。"
+                          } %>
+          </div>
+        </div>
+      <% end %>
+
       <div class="card shadow-sm mb-4">
         <div class="card-body">
           <h2 class="h4 mb-3">今回の改善ポイント</h2>
