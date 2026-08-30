@@ -29,4 +29,11 @@ class HomeControllerTest < ActionDispatch::IntegrationTest
     assert_select "a", text: "新規登録"
     assert_select "a", text: "ログイン"
   end
+
+  test "練習履歴の保存期間についての案内が表示される" do
+    get home_index_url
+
+    assert_response :success
+    assert_select "div.alert.alert-info", text: /練習履歴・分析結果・録音データは、練習日から14日を過ぎると自動的に削除されます。/
+  end
 end
