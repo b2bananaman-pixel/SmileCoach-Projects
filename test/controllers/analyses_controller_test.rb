@@ -30,4 +30,29 @@ class AnalysesControllerTest < ActionDispatch::IntegrationTest
 
     assert_redirected_to new_user_session_path
   end
+
+  test "録音データがある場合は再生UIが表示される" do
+    sign_in @user
+
+    @analysis.practice.audio.attach(
+      io: StringIO.new("fake audio data"),
+      filename: "practice.webm",
+      content_type: "audio/webm"
+    )
+
+    get analysis_path(@analysis)
+
+    assert_response :success
+    assert_select "audio[controls]"
+  end
+
+  test "録音データがない場合も正常に表示される" do
+    sign_in @user
+
+    get analysis_path(@analysis)
+
+    assert_response :success
+    assert_select "body"
+    assert_select "audio", count: 0
+  end
 end

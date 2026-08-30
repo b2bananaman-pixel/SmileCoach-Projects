@@ -157,4 +157,83 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
 
     assert_redirected_to new_user_session_url
   end
+
+  test "自分の練習に紐づく録音データを削除できる" do
+    practice = Practice.create!(
+      user: @user,
+      practice_theme: @practice_theme
+    )
+
+    audio_file = fixture_file_upload(
+      "test/fixtures/files/test_audio.webm",
+      "audio/webm"
+    )
+    practice.audio.attach(audio_file)
+
+    assert practice.audio.attached?
+
+    delete audio_practice_path(practice)
+
+    assert_redirected_to practices_path
+
+    practice.reload
+    assert_not practice.audio.attached?
+  end
+
+  test "録音データを削除しても練習履歴と分析結果が残る" do
+    practice = Practice.create!(
+      user: @user,
+      practice_theme: @practice_theme
+    )
+
+    audio_file = fixture_file_upload(
+      "test/fixtures/files/test_audio.webm",
+      "audio/webm"
+    )
+    practice.audio.attach(audio_file)
+
+    analysis = Analysis.create!(
+      practice: practice,
+      total_score: 85
+    )
+
+    delete audio_practice_path(practice)
+
+    assert_redirected_to practices_path
+
+    practice.reload
+    assert_not practice.audio.attached?
+
+    assert Practice.exists?(practice.id)
+    assert Analysis.exists?(analysis.id)
+    assert_equal 85, analysis.reload.total_score
+  end
+
+  test "他のユーザーの録音データは削除できない" do
+    other_user = User.create!(
+      name: "他のユーザー",
+      email: "other-audio-user@example.com",
+      password: "password123"
+    )
+
+    other_practice = Practice.create!(
+      user: other_user,
+      practice_theme: @practice_theme
+    )
+
+    audio_file = fixture_file_upload(
+      "test/fixtures/files/test_audio.webm",
+      "audio/webm"
+    )
+    other_practice.audio.attach(audio_file)
+
+    assert other_practice.audio.attached?
+
+    delete audio_practice_path(other_practice)
+
+    assert_response :not_found
+
+    other_practice.reload
+    assert other_practice.audio.attached?
+  end
 end

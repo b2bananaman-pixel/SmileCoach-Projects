@@ -17,7 +17,7 @@
             </h2>
 
             <span>
-             <%= practice.created_at.strftime("%Y/%m/%d %H:%M") %>
+              <%= practice.created_at.strftime("%Y/%m/%d %H:%M") %>
             </span>
           </div>
 
@@ -27,6 +27,24 @@
               <%= practice.analysis&.total_score || "未取得" %>点
             </strong>
           </p>
+
+          <% if practice.audio.attached? %>
+            <div class="mb-3">
+              <h3 class="h6">録音データ</h3>
+
+              <%= audio_tag url_for(practice.audio),
+                            controls: true,
+                            class: "w-100 mb-2" %>
+
+              <%= button_to "録音データを削除",
+                            audio_practice_path(practice),
+                            method: :delete,
+                            class: "btn btn-outline-danger",
+                            data: {
+                              turbo_confirm: "録音データを削除しますか？\n※練習履歴と分析結果は残ります。"
+                            } %>
+            </div>
+          <% end %>
 
           <% if practice.analysis.present? %>
             <%= link_to "分析結果を見る",
