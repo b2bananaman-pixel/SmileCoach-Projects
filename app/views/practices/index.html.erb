@@ -1,0 +1,40 @@
+<div class="container py-4">
+  <div class="mb-4">
+    <h1>練習履歴</h1>
+  </div>
+
+  <% if @practices.empty? %>
+    <div class="alert alert-info">
+      まだ練習履歴がありません。
+    </div>
+  <% else %>
+    <div class="list-group">
+      <% @practices.each do |practice| %>
+        <div class="list-group-item mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h5 mb-0">
+              <%= practice.practice_theme.name %>
+            </h2>
+
+            <span>
+             <%= practice.created_at.strftime("%Y/%m/%d %H:%M") %>
+            </span>
+          </div>
+
+          <p class="mb-2">
+            総合スコア：
+            <strong>
+              <%= practice.analysis&.total_score || "未取得" %>点
+            </strong>
+          </p>
+
+          <% if practice.analysis.present? %>
+            <%= link_to "分析結果を見る",
+                        analysis_path(practice.analysis),
+                        class: "btn btn-primary" %>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</div>
