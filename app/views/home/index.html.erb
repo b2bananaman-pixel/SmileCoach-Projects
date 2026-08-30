@@ -16,39 +16,42 @@
 
   <section class="row mt-5">
 
-  <div class="col-md-4">
-    <div class="card h-100 shadow-sm p-4 text-center">
-      <div class="feature-icon">😊</div>
-      <h2 class="mb-3">笑顔を分析</h2>
-      <p>
-        接客中の笑顔をAIが分析します。
-      </p>
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm p-4 text-center">
+        <div class="feature-icon">😊</div>
+        <h2 class="mb-3">笑顔を分析</h2>
+        <p>
+          接客中の笑顔をAIが分析します。
+        </p>
+        <p class="text-muted mb-0">
+          ※今後対応予定です。
+        </p>
+      </div>
     </div>
-  </div>
 
-  <div class="col-md-4">
-    <div class="card h-100 shadow-sm p-4 text-center">
-      <div class="feature-icon">🎤</div>
-      <h2 class="mb-3">話し方を分析</h2>
-      <p>
-        話す速さや声の特徴を分析します。
-      </p>
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm p-4 text-center">
+        <div class="feature-icon">🎤</div>
+        <h2 class="mb-3">話し方を分析</h2>
+        <p>
+          話す速さや声の特徴を分析します。
+        </p>
+      </div>
     </div>
-  </div>
 
-  <div class="col-md-4">
-    <div class="card h-100 shadow-sm p-4 text-center">
-      <div class="feature-icon">📈</div>
-      <h2 class="mb-3">成長を振り返る</h2>
-      <p>
-        練習結果を記録して、成長を確認できます。
-      </p>
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm p-4 text-center">
+        <div class="feature-icon">📈</div>
+        <h2 class="mb-3">成長を振り返る</h2>
+        <p>
+          練習結果を記録して、成長を確認できます。
+        </p>
+      </div>
     </div>
-  </div>
 
-</section>
+  </section>
 
-    <section class="mt-5">
+  <section class="mt-5">
     <h2 class="mb-3">こんな人におすすめ</h2>
 
     <div class="recommend-list">
@@ -58,12 +61,12 @@
     </div>
   </section>
 
-<% if user_signed_in? %>
-  <%= link_to "練習テーマを選択する", practice_themes_path, class: "btn btn-primary" %>
-<% else %>
-  <%= link_to "新規登録", new_user_registration_path, class: "btn btn-secondary btn-sm py-1" %>
-  <%= link_to "ログイン", new_user_session_path, class: "btn btn-secondary btn-sm py-1" %>
-<% end %>
-  </div>
+  <% if user_signed_in? %>
+    <%= link_to "練習テーマを選択する", practice_themes_path, class: "btn btn-primary" %>
+    <%= link_to "練習履歴を見る", practices_path, class: "btn btn-secondary" %>
+  <% else %>
+    <%= link_to "新規登録", new_user_registration_path, class: "btn btn-secondary btn-sm py-1" %>
+    <%= link_to "ログイン", new_user_session_path, class: "btn btn-secondary btn-sm py-1" %>
+  <% end %>
 
 </div>

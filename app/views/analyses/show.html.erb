@@ -28,7 +28,7 @@
             </div>
 
             <p class="mb-0 mt-2">
-              <%= @analysis.speech_speed %> 文字/秒
+              <%= number_with_precision(@analysis.speech_speed, precision: 2) %> 文字/秒
             </p>
           </div>
 
