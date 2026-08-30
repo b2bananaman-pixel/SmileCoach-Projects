@@ -3,5 +3,5 @@ class Practice < ApplicationRecord
 
   belongs_to :user
   belongs_to :practice_theme
-  has_one :analysis
+  has_one :analysis, dependent: :destroy
 end
