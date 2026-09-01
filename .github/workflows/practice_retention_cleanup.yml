@@ -1,0 +1,18 @@
+name: Practice Retention Cleanup
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete expired practice histories
+        run: |
+          curl --fail-with-body -X POST \
+            -H "Authorization: Bearer ${{ secrets.RETENTION_CLEANUP_TOKEN }}" \
+            https://smilecoach-projects.onrender.com/internal/practice_retention
+

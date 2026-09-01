@@ -2,6 +2,9 @@ Rails.application.routes.draw do
   resources :practices, only: [ :index ] do
     delete :audio, on: :member
   end
+
+  post "internal/practice_retention", to: "internal/practice_retention#destroy"
+
   resources :analyses, only: [ :show ]
   resources :practice_themes, only: [ :index, :show ] do
     post :create_practice, on: :member
