@@ -12,15 +12,18 @@ class SpeechAnalysis
     まあ
   ].freeze
 
-  def initialize(transcription:, duration:)
+  def initialize(transcription:, duration:, speech_duration: nil)
     @transcription = transcription
     @duration = duration
+    @speech_duration = speech_duration
   end
 
   def speech_speed
-    return 0.0 if @duration.blank? || @duration <= 0
+    duration = @speech_duration || @duration
 
-    @transcription.to_s.length.to_f / @duration
+    return 0.0 if duration.blank? || duration <= 0
+
+    @transcription.to_s.length.to_f / duration
   end
 
   def filler_count
@@ -36,7 +39,7 @@ class SpeechAnalysis
     filler_count / (@duration / 60.0)
   end
 
-    def filler_score
+  def filler_score
     average = filler_count_per_minute
 
     return 0 if @duration.blank? || @duration <= 0
