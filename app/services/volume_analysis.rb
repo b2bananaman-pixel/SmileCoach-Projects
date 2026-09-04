@@ -1,6 +1,9 @@
 require "open3"
 
 class VolumeAnalysis
+  SILENCE_THRESHOLD = "-40dB"
+  SILENCE_DURATION = "0.1"
+
   def initialize(audio)
     @audio = audio
   end
@@ -16,7 +19,7 @@ class VolumeAnalysis
       _, stderr, = Open3.capture3(
         "ffmpeg",
         "-i", tempfile.path,
-        "-af", "volumedetect",
+        "-af", "silenceremove=stop_periods=-1:stop_duration=#{SILENCE_DURATION}:stop_threshold=#{SILENCE_THRESHOLD},volumedetect",
         "-f", "null",
         "-"
       )
