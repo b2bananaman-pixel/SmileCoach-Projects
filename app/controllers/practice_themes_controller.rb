@@ -26,9 +26,15 @@ class PracticeThemesController < ApplicationController
 
     volume = VolumeAnalysis.new(practice.audio).volume
 
+    speech_duration = SpeechDurationAnalysis.new(
+      practice.audio,
+      duration: practice.duration
+    ).speech_duration
+
     speech_analysis = SpeechAnalysis.new(
       transcription: practice.transcription,
-      duration: practice.duration
+      duration: practice.duration,
+      speech_duration: speech_duration
     )
 
     score_analysis = ScoreAnalysis.new(

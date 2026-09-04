@@ -192,4 +192,72 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     transcription_service.verify
     ai_comment_service.verify
   end
+
+    test "無音を除いた実際の発話時間で話速を分析して保存できる" do
+    audio_file = fixture_file_upload(
+      "test_volume.webm",
+      "audio/webm"
+    )
+
+    transcription_service = Minitest::Mock.new
+    transcription_service.expect(
+      :call,
+      { "text" => "こんにちは今日はいい天気ですね" }
+    )
+
+    ai_comment_service = Minitest::Mock.new
+    ai_comment_service.expect(
+      :call,
+      "テスト用のAIコメントです。"
+    )
+
+    speech_duration_analysis = Minitest::Mock.new
+    speech_duration_analysis.expect(
+      :speech_duration,
+      5.0
+    )
+
+    GroqTranscriptionService.stub(
+      :new,
+      ->(_audio) { transcription_service }
+    ) do
+      AiCommentService.stub(
+        :new,
+        ->(_analysis) { ai_comment_service }
+      ) do
+        SpeechDurationAnalysis.stub(
+          :new,
+          ->(_audio, duration:) {
+            assert_equal 10.0, duration
+            speech_duration_analysis
+          }
+        ) do
+          post create_practice_practice_theme_url(@practice_theme),
+            params: {
+              audio: audio_file,
+              duration: 10.0
+            }
+        end
+      end
+    end
+
+    assert_response :success
+
+    analysis = Analysis.order(:created_at).last
+
+    assert_not_nil analysis
+
+    expected_speech_speed =
+      "こんにちは今日はいい天気ですね".length.to_f / 5.0
+
+    assert_in_delta(
+      expected_speech_speed,
+      analysis.speech_speed,
+      0.01
+    )
+
+    transcription_service.verify
+    ai_comment_service.verify
+    speech_duration_analysis.verify
+  end
 end
