@@ -1,23 +1,41 @@
 require "test_helper"
 
 class SpeechAnalysisTest < ActiveSupport::TestCase
-  test "文字数と録音時間から話速を計算できる" do
+  test "モーラ数を計算できる" do
     analysis = SpeechAnalysis.new(
       transcription: "こんにちはきょうはいいてんきですね",
       duration: 5.0
     )
 
-    assert_equal 3.4, analysis.speech_speed
+    assert_equal 16, analysis.mora_count
   end
 
-  test "実際の発話時間を使って話速を計算できる" do
+  test "小さい文字を含む単語を正しくモーラ数として計算できる" do
+    analysis = SpeechAnalysis.new(
+      transcription: "きょう",
+      duration: 1.0
+    )
+
+    assert_equal 2, analysis.mora_count
+  end
+
+  test "文字数ではなくモーラ数と録音時間から話速を計算できる" do
+    analysis = SpeechAnalysis.new(
+      transcription: "こんにちはきょうはいいてんきですね",
+      duration: 5.0
+    )
+
+    assert_equal 3.2, analysis.speech_speed
+  end
+
+  test "実際の発話時間を使ってモーラ数から話速を計算できる" do
     analysis = SpeechAnalysis.new(
       transcription: "こんにちはきょうはいいてんきですね",
       duration: 10.0,
       speech_duration: 5.0
     )
 
-    assert_equal 3.4, analysis.speech_speed
+    assert_equal 3.2, analysis.speech_speed
   end
 
   test "実際の発話時間が指定されていない場合は録音時間を使う" do
@@ -26,7 +44,7 @@ class SpeechAnalysisTest < ActiveSupport::TestCase
       duration: 5.0
     )
 
-    assert_equal 3.4, analysis.speech_speed
+    assert_equal 3.2, analysis.speech_speed
   end
 
   test "録音時間が0の場合は0を返す" do
@@ -46,6 +64,33 @@ class SpeechAnalysisTest < ActiveSupport::TestCase
     )
 
     assert_equal 0.0, analysis.speech_speed
+  end
+
+  test "句読点と空白はモーラ数に含めない" do
+    analysis = SpeechAnalysis.new(
+      transcription: "こんにちは、きょうはいいてんきですね。",
+      duration: 5.0
+    )
+
+    assert_equal 16, analysis.mora_count
+  end
+
+  test "促音は1モーラとして数える" do
+    analysis = SpeechAnalysis.new(
+      transcription: "いっぱい",
+      duration: 1.0
+    )
+
+    assert_equal 4, analysis.mora_count
+  end
+
+  test "長音は1モーラとして数える" do
+    analysis = SpeechAnalysis.new(
+      transcription: "コーヒー",
+      duration: 1.0
+    )
+
+    assert_equal 4, analysis.mora_count
   end
 
   test "文字起こしからフィラー回数を数えられる" do

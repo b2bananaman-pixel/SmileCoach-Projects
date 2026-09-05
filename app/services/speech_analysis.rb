@@ -1,3 +1,5 @@
+require "natto"
+
 class SpeechAnalysis
   FILLERS = %w[
     えーと
@@ -12,6 +14,8 @@ class SpeechAnalysis
     まあ
   ].freeze
 
+  SMALL_KANA = "ァィゥェォャュョヮ".freeze
+
   def initialize(transcription:, duration:, speech_duration: nil)
     @transcription = transcription
     @duration = duration
@@ -23,7 +27,19 @@ class SpeechAnalysis
 
     return 0.0 if duration.blank? || duration <= 0
 
-    @transcription.to_s.length.to_f / duration
+    mora_count.to_f / duration
+  end
+
+  def mora_count
+    nm = Natto::MeCab.new
+    reading = +""
+
+    nm.parse(@transcription.to_s) do |node|
+      value = node.feature.split(",")[7]
+      reading << value if value.present? && value != "*"
+    end
+
+    count_mora(reading)
   end
 
   def filler_count
@@ -56,5 +72,14 @@ class SpeechAnalysis
     else
       20
     end
+  end
+
+  private
+
+  def count_mora(reading)
+    reading
+      .gsub(/[#{SMALL_KANA}]/, "")
+      .scan(/[ァ-ヴー]/)
+      .length
   end
 end
