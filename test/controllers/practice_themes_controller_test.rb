@@ -1,4 +1,3 @@
-
 require "test_helper"
 
 class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
@@ -193,7 +192,7 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     ai_comment_service.verify
   end
 
-    test "無音を除いた実際の発話時間で話速を分析して保存できる" do
+  test "無音を除いた実際の発話時間で話速を分析して保存できる" do
     audio_file = fixture_file_upload(
       "test_volume.webm",
       "audio/webm"
@@ -247,8 +246,8 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
 
     assert_not_nil analysis
 
-    expected_speech_speed =
-      "こんにちは今日はいい天気ですね".length.to_f / 5.0
+    # 「こんにちは今日はいい天気ですね」は16モーラ
+    expected_speech_speed = 16.0 / 5.0
 
     assert_in_delta(
       expected_speech_speed,

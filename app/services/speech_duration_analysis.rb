@@ -2,7 +2,7 @@ require "open3"
 
 class SpeechDurationAnalysis
   SILENCE_THRESHOLD = "-40dB"
-  SILENCE_DURATION = "0.1"
+  SILENCE_DURATION = "3.0"
 
   def initialize(audio, duration:)
     @audio = audio

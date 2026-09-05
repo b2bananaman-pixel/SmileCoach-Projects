@@ -8,19 +8,19 @@ class ScoreAnalysis
   def speech_speed_score
     return 0 if @speech_speed <= 0
 
-    case @speech_speed
-    when 3.0..5.0
+    if @speech_speed.between?(5.0, 6.0)
       100
-    when 2.0...3.0, 5.0...6.0
+    elsif @speech_speed >= 4.0 && @speech_speed < 5.0 ||
+          @speech_speed > 6.0 && @speech_speed < 7.0
       80
-    when 1.5...2.0, 6.0...6.5
+    elsif @speech_speed >= 3.0 && @speech_speed < 4.0 ||
+          @speech_speed >= 7.0 && @speech_speed < 8.0
       60
-    when 1.0...1.5, 6.5...7.0
+    elsif @speech_speed >= 2.0 && @speech_speed < 3.0 ||
+          @speech_speed >= 8.0 && @speech_speed < 9.0
       40
-    when 0.0...1.0, (7.0...)
-      20
     else
-      0
+      20
     end
   end
 
