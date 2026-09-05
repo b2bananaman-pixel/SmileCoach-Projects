@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - name: Install MeCab
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y mecab libmecab-dev mecab-ipadic-utf8
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -43,7 +45,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
