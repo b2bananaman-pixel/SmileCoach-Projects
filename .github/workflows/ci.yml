@@ -75,7 +75,7 @@ jobs:
 
     steps:
       - name: Install packages
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y google-chrome-stable curl libjemalloc2 libvips postgresql-client ffmpeg
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y google-chrome-stable curl libjemalloc2 libvips postgresql-client ffmpeg mecab libmecab-dev mecab-ipadic-utf8
 
       - name: Checkout code
         uses: actions/checkout@v4
