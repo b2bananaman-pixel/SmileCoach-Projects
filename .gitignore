@@ -52,3 +52,6 @@
 # Ignore editor files
 .vscode/
 .idea/
+
+# Ignore local practice audio files
+practice_audio_*.webm
