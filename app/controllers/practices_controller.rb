@@ -3,6 +3,7 @@ class PracticesController < ApplicationController
 
   def index
     @practices = current_user.practices
+                             .with_attached_audio
                              .includes(:analysis, :practice_theme)
                              .order(created_at: :desc)
   end
