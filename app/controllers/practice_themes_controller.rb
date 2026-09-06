@@ -10,51 +10,12 @@ class PracticeThemesController < ApplicationController
   end
 
   def create_practice
-    practice_theme = PracticeTheme.find(params[:id])
-
-    practice = Practice.new(
+    practice = CreatePracticeService.new(
       user: current_user,
-      practice_theme: practice_theme,
+      practice_theme: PracticeTheme.find(params[:id]),
+      audio: params[:audio],
       duration: params[:duration]
-    )
-
-    practice.audio.attach(params[:audio])
-    practice.save!
-
-    transcription_result = GroqTranscriptionService.new(practice.audio).call
-    practice.update!(transcription: transcription_result["text"])
-
-    volume = VolumeAnalysis.new(practice.audio).volume
-
-    speech_duration = SpeechDurationAnalysis.new(
-      practice.audio,
-      duration: practice.duration
-    ).speech_duration
-
-    speech_analysis = SpeechAnalysis.new(
-      transcription: practice.transcription,
-      duration: practice.duration,
-      speech_duration: speech_duration
-    )
-
-    score_analysis = ScoreAnalysis.new(
-      speech_speed: speech_analysis.speech_speed,
-      volume: volume,
-      filler_score: speech_analysis.filler_score
-    )
-
-    practice.create_analysis!(
-      volume: volume,
-      volume_score: score_analysis.volume_score,
-      speech_speed: speech_analysis.speech_speed,
-      speech_speed_score: score_analysis.speech_speed_score,
-      filler_count: speech_analysis.filler_count,
-      total_score: score_analysis.total_score,
-      filler_score: speech_analysis.filler_score
-    )
-    analysis = practice.analysis
-    ai_comment = AiCommentService.new(analysis).call
-    analysis.update!(ai_comment: ai_comment)
+    ).call
 
     render json: {
       success: true,
