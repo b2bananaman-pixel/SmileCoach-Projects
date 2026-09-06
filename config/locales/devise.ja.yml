@@ -19,6 +19,9 @@ ja:
         password_confirmation: "パスワード確認"
 
   devise:
+    registrations:
+      signed_up: "新規登録が完了しました。"
+
     failure:
       invalid: "メールアドレスまたはパスワードが違います。"
       unauthenticated: "ログインしてください。"
