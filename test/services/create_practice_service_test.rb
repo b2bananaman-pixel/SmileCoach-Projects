@@ -63,4 +63,64 @@ class CreatePracticeServiceTest < ActiveSupport::TestCase
     transcription_service.verify
     ai_comment_service.verify
   end
+
+  test "AIコメント取得に失敗しても分析結果を保存できる" do
+    audio_file = Rack::Test::UploadedFile.new(
+      Rails.root.join("test/fixtures/files/test_volume.webm"),
+      "audio/webm"
+    )
+
+    transcription_service = Minitest::Mock.new
+    transcription_service.expect(
+      :call,
+      { "text" => "こんにちは今日はいい天気ですね" }
+    )
+
+    ai_comment_service = Object.new
+
+    def ai_comment_service.call
+      raise "Groq API request failed: test-api-key"
+    end
+
+    logged_message = nil
+
+    GroqTranscriptionService.stub(
+      :new,
+      ->(_audio) { transcription_service }
+    ) do
+      AiCommentService.stub(
+        :new,
+        ->(_analysis) { ai_comment_service }
+      ) do
+        Rails.logger.stub(
+          :error,
+          ->(message) { logged_message = message }
+        ) do
+          service = CreatePracticeService.new(
+            user: @user,
+            practice_theme: @practice_theme,
+            audio: audio_file,
+            duration: 1.0
+          )
+
+          practice = service.call
+
+          assert_not_nil practice
+          assert_not_nil practice.analysis
+          assert_nil practice.analysis.ai_comment
+          assert_equal(
+            "こんにちは今日はいい天気ですね",
+            practice.transcription
+          )
+        end
+      end
+    end
+
+    assert_not_nil logged_message
+    assert_includes logged_message, "AIコメント生成に失敗しました"
+    assert_includes logged_message, "RuntimeError"
+    refute_includes logged_message, "test-api-key"
+
+    transcription_service.verify
+  end
 end

@@ -55,4 +55,16 @@ class AnalysesControllerTest < ActionDispatch::IntegrationTest
     assert_select "body"
     assert_select "audio", count: 0
   end
+
+  test "AIコメントがない場合はフォールバックメッセージが表示される" do
+    sign_in @user
+
+    @analysis.update!(ai_comment: nil)
+
+    get analysis_path(@analysis)
+
+    assert_response :success
+    assert_select "h2", text: "今回の改善ポイント"
+    assert_select "p", text: "今回の分析結果を確認して、次回の接客練習に活かしましょう。"
+  end
 end
