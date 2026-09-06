@@ -40,8 +40,14 @@ class CreatePracticeService
       filler_score: speech_analysis.filler_score
     )
 
-    ai_comment = AiCommentService.new(analysis).call
-    analysis.update!(ai_comment: ai_comment)
+    begin
+      ai_comment = AiCommentService.new(analysis).call
+      analysis.update!(ai_comment: ai_comment)
+    rescue StandardError => e
+      Rails.logger.error(
+        "AIコメント生成に失敗しました: #{e.class}"
+      )
+    end
 
     practice
   end
