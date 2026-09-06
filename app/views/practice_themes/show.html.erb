@@ -72,8 +72,11 @@
     let audioChunks = [];
     let recordingStartTime;
     let recordingDuration;
+    let savingInProgress = false;
 
     startButton.addEventListener("click", async () => {
+      if (savingInProgress) return;
+
       try {
         audioStream = await navigator.mediaDevices.getUserMedia({
           audio: true
@@ -117,8 +120,8 @@
                 method: "POST",
                 headers: {
                   "X-CSRF-Token": document.querySelector(
-                     'meta[name="csrf-token"]'
-                ).content
+                    'meta[name="csrf-token"]'
+                  ).content
                 },
                 body: formData
               }
@@ -134,12 +137,19 @@
             } else {
               console.error("Practiceの保存に失敗しました:", data);
               status.textContent = "録音の保存に失敗しました";
+              savingInProgress = false;
+              startButton.disabled = false;
+              stopButton.disabled = true;
             }
           } catch (error) {
             console.error("サーバーへの送信に失敗しました:", error);
             status.textContent = "録音の保存に失敗しました";
+            savingInProgress = false;
+            startButton.disabled = false;
+            stopButton.disabled = true;
           }
         });
+
         recordingStartTime = Date.now();
         mediaRecorder.start();
 
@@ -153,16 +163,18 @@
     });
 
     stopButton.addEventListener("click", () => {
-      if (!mediaRecorder) return;
+      if (!mediaRecorder || savingInProgress) return;
 
+      savingInProgress = true;
       recordingDuration = (Date.now() - recordingStartTime) / 1000;
+
       console.log("録音時間:", recordingDuration, "秒");
       mediaRecorder.stop();
 
       audioStream.getTracks().forEach((track) => track.stop());
 
       status.textContent = "保存中...";
-      startButton.disabled = false;
+      startButton.disabled = true;
       stopButton.disabled = true;
     });
   });
