@@ -9,6 +9,12 @@ Rails.application.routes.draw do
   resources :practice_themes, only: [ :index, :show ] do
     post :create_practice, on: :member
   end
+
+  get "guest/practice_themes", to: "guest_practice_themes#index"
+  get "guest/practice_themes/:id", to: "guest_practice_themes#show", as: :guest_practice_theme
+  post "guest/practice_themes/:id/create_practice",
+     to: "guest_practice_themes#create_practice",
+     as: :create_guest_practice
   devise_for :users
 
   get "home/index"

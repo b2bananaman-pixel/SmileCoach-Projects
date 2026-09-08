@@ -1,0 +1,32 @@
+<div class="container py-5">
+  <h1 class="text-center mb-5">練習テーマを選択</h1>
+
+  <div class="alert alert-info text-center mb-5">
+    ゲスト体験では、練習結果を保存せずに
+    録音・分析をお試しいただけます。
+  </div>
+
+  <div class="row g-4">
+    <% @practice_themes.each do |practice_theme| %>
+      <div class="col-md-6 col-lg-3">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body text-center">
+            <h2 class="card-title h4 mb-3">
+              <%= practice_theme.name %>
+            </h2>
+
+            <%= link_to "このテーマで練習する",
+                        guest_practice_theme_path(practice_theme),
+                        class: "btn btn-secondary" %>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+
+  <div class="text-center mt-5">
+    <%= link_to "会員登録はこちら",
+                new_user_registration_path,
+                class: "btn btn-primary" %>
+  </div>
+</div>
