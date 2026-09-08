@@ -1,0 +1,550 @@
+<div class="container py-5">
+  <h1 class="text-center mb-5">接客練習</h1>
+
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h2 class="card-title mb-4">
+            練習テーマ：<%= @practice_theme.name %>
+          </h2>
+
+          <div class="border rounded p-3 mb-4">
+            <h3 class="h5 mb-3">👤 お客様像</h3>
+
+            <p class="card-text mb-0">
+              <%= simple_format(
+                @practice_theme.description.split("接客条件：").first.sub("お客様像：", "")
+              ) %>
+            </p>
+          </div>
+
+          <div class="border rounded p-3">
+            <h3 class="h5 mb-3">🎯 今回の接客ポイント</h3>
+
+            <p class="card-text mb-0">
+              <%= simple_format(
+                @practice_theme.description.split("接客条件：").last
+              ) %>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm text-center">
+        <div class="card-body py-4">
+
+          <h2 class="h5 mb-3">録音状態</h2>
+
+          <p id="recording-status" class="mb-4">
+            停止中
+          </p>
+
+          <button id="start-recording"
+                  class="btn btn-primary me-2">
+            録音開始
+          </button>
+
+          <button id="stop-recording"
+                  class="btn btn-secondary"
+                  disabled>
+            録音停止
+          </button>
+
+        </div>
+      </div>
+
+      <!-- 録音結果 -->
+      <div id="recording-result"
+           class="d-none mt-4">
+
+        <!-- 録音した音声 -->
+        <div class="card shadow-sm mb-4">
+          <div class="card-body">
+
+            <h2 class="h5 mb-3">
+              録音した音声
+            </h2>
+
+            <audio id="recorded-audio"
+                   controls
+                   class="w-100">
+            </audio>
+
+          </div>
+        </div>
+
+        <!-- 分析結果 -->
+        <div id="analysis-result">
+
+          <div class="card shadow-sm mb-4">
+            <div class="card-body">
+
+              <h2 class="h4 mb-4">
+                今回の分析結果
+              </h2>
+
+              <!-- 総合スコア -->
+              <div class="text-center mb-4">
+
+                <p class="mb-1">
+                  総合スコア
+                </p>
+
+                <p id="total-score"
+                   class="display-4 fw-bold mb-0">
+                </p>
+
+              </div>
+
+              <!-- 各スコア -->
+              <div class="row g-3">
+
+                <!-- 話す速さ -->
+                <div class="col-md-4">
+                  <div class="border rounded p-3 text-center h-100">
+
+                    <h3 class="h6">
+                      話す速さ
+                    </h3>
+
+                    <p id="speech-speed"
+                       class="mb-1">
+                    </p>
+
+                    <p id="speech-speed-score"
+                       class="fw-bold mb-0">
+                    </p>
+
+                  </div>
+                </div>
+
+                <!-- フィラー -->
+                <div class="col-md-4">
+                  <div class="border rounded p-3 text-center h-100">
+
+                    <h3 class="h6">
+                      フィラー
+                    </h3>
+
+                    <p id="filler-count"
+                       class="mb-1">
+                    </p>
+
+                    <p id="filler-score"
+                       class="fw-bold mb-0">
+                    </p>
+
+                  </div>
+                </div>
+
+                <!-- 声量 -->
+                <div class="col-md-4">
+                  <div class="border rounded p-3 text-center h-100">
+
+                    <h3 class="h6">
+                      声量
+                    </h3>
+
+                    <p id="volume"
+                       class="mb-1">
+                    </p>
+
+                    <p id="volume-score"
+                       class="fw-bold mb-0">
+                    </p>
+
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+
+          <!-- AIコメント -->
+          <div class="card shadow-sm mb-4">
+            <div class="card-body">
+
+              <h2 class="h4 mb-3">
+                今回の改善ポイント
+              </h2>
+
+              <p id="ai-comment"
+                 class="mb-0">
+              </p>
+
+            </div>
+          </div>
+
+          <!-- 会員登録への導線 -->
+          <div class="alert alert-info text-center">
+
+            <p class="mb-3">
+              会員登録すると、練習結果を保存して
+              後から振り返ることができます。
+            </p>
+
+            <%= link_to "会員登録はこちら",
+                        new_user_registration_path,
+                        class: "btn btn-primary" %>
+
+          </div>
+
+        </div>
+      </div>
+
+      <!-- テーマ一覧へ戻る -->
+      <div class="text-center mt-4">
+
+        <%= link_to "テーマ一覧に戻る",
+                    guest_practice_themes_path,
+                    class: "btn btn-outline-secondary" %>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("turbo:load", () => {
+    const startButton =
+      document.getElementById("start-recording");
+
+    const stopButton =
+      document.getElementById("stop-recording");
+
+    const status =
+      document.getElementById("recording-status");
+
+    const recordingResult =
+      document.getElementById("recording-result");
+
+    const recordedAudio =
+      document.getElementById("recorded-audio");
+
+    if (
+      !startButton ||
+      !stopButton ||
+      !status ||
+      !recordingResult ||
+      !recordedAudio
+    ) {
+      return;
+    }
+
+    let mediaRecorder;
+    let audioStream;
+    let audioChunks = [];
+    let recordingStartTime;
+    let recordingDuration;
+    let analysisInProgress = false;
+    let audioUrl;
+
+    /*
+     * 録音開始
+     */
+    startButton.addEventListener(
+      "click",
+      async () => {
+        if (analysisInProgress) return;
+
+        try {
+          audioStream =
+            await navigator.mediaDevices.getUserMedia({
+              audio: true
+            });
+
+          audioChunks = [];
+
+          mediaRecorder =
+            new MediaRecorder(audioStream);
+
+          mediaRecorder.addEventListener(
+            "dataavailable",
+            (event) => {
+              if (event.data.size > 0) {
+                audioChunks.push(event.data);
+              }
+            }
+          );
+
+          /*
+           * 録音停止後の処理
+           */
+          mediaRecorder.addEventListener(
+            "stop",
+            async () => {
+              const recordedBlob =
+                new Blob(audioChunks, {
+                  type: "audio/webm"
+                });
+
+              console.log(
+                "ゲスト録音データを取得しました:",
+                recordedBlob
+              );
+
+              console.log(
+                "録音データサイズ:",
+                recordedBlob.size,
+                "bytes"
+              );
+
+              /*
+               * ブラウザ上で録音を再生できるようにする
+               */
+              if (audioUrl) {
+                URL.revokeObjectURL(audioUrl);
+              }
+
+              audioUrl =
+                URL.createObjectURL(recordedBlob);
+
+              recordedAudio.src = audioUrl;
+
+              recordingResult.classList.remove(
+                "d-none"
+              );
+
+              /*
+               * サーバーへ分析用データを送信
+               */
+              const formData =
+                new FormData();
+
+              formData.append(
+                "audio",
+                recordedBlob,
+                "guest_practice_audio.webm"
+              );
+
+              formData.append(
+                "duration",
+                recordingDuration
+              );
+
+              status.textContent =
+                "分析中...";
+
+              try {
+                const response =
+                  await fetch(
+                    "<%= create_guest_practice_path(@practice_theme) %>",
+                    {
+                      method: "POST",
+
+                      headers: {
+                        "X-CSRF-Token":
+                          document.querySelector(
+                            'meta[name="csrf-token"]'
+                          ).content
+                      },
+
+                      body: formData
+                    }
+                  );
+
+                const data =
+                  await response.json();
+
+                /*
+                 * 分析成功
+                 */
+                if (
+                  response.ok &&
+                  data.success
+                ) {
+                  console.log(
+                    "ゲストの分析が完了しました:",
+                    data
+                  );
+
+                  /*
+                   * 総合スコア
+                   */
+                  document.getElementById(
+                    "total-score"
+                  ).textContent =
+                    `${data.total_score}点`;
+
+                  /*
+                   * 話す速さ
+                   */
+                  document.getElementById(
+                    "speech-speed"
+                  ).textContent =
+                    `${data.speech_speed.toFixed(1)}文字/秒`;
+
+                  document.getElementById(
+                    "speech-speed-score"
+                  ).textContent =
+                    `スコア：${data.speech_speed_score}点`;
+
+                  /*
+                   * フィラー
+                   */
+                  document.getElementById(
+                    "filler-count"
+                  ).textContent =
+                    `${data.filler_count}回`;
+
+                  document.getElementById(
+                    "filler-score"
+                  ).textContent =
+                    `スコア：${data.filler_score}点`;
+
+                  /*
+                   * 声量
+                   */
+                  document.getElementById(
+                    "volume"
+                  ).textContent =
+                    `${data.volume.toFixed(1)} dB`;
+
+                  document.getElementById(
+                    "volume-score"
+                  ).textContent =
+                    `スコア：${data.volume_score}点`;
+
+                  /*
+                   * AIコメント
+                   */
+                  document.getElementById(
+                    "ai-comment"
+                  ).textContent =
+                    data.ai_comment ||
+                    "今回の分析結果を確認して、次回の接客練習に活かしましょう。";
+
+                  status.textContent =
+                    "分析完了";
+                } else {
+                  /*
+                   * 分析失敗
+                   */
+                  console.error(
+                    "ゲストの音声分析に失敗しました:",
+                    data
+                  );
+
+                  status.textContent =
+                    data.errors?.[0] ||
+                    "音声分析に失敗しました";
+                }
+              } catch (error) {
+                /*
+                 * 通信エラー
+                 */
+                console.error(
+                  "ゲストの音声分析リクエストに失敗しました:",
+                  error
+                );
+
+                status.textContent =
+                  "音声分析に失敗しました";
+              } finally {
+                analysisInProgress =
+                  false;
+
+                startButton.disabled =
+                  false;
+
+                stopButton.disabled =
+                  true;
+              }
+            }
+          );
+
+          /*
+           * 録音開始
+           */
+          recordingStartTime =
+            Date.now();
+
+          mediaRecorder.start();
+
+          status.textContent =
+            "録音中";
+
+          startButton.disabled =
+            true;
+
+          stopButton.disabled =
+            false;
+
+          recordingResult.classList.add(
+            "d-none"
+          );
+
+          analysisInProgress =
+            true;
+        } catch (error) {
+          /*
+           * マイクへのアクセス失敗
+           */
+          console.error(
+            "ゲスト録音の開始に失敗しました:",
+            error
+          );
+
+          status.textContent =
+            "マイクへのアクセスが許可されませんでした";
+
+          analysisInProgress =
+            false;
+
+          startButton.disabled =
+            false;
+
+          stopButton.disabled =
+            true;
+        }
+      }
+    );
+
+    /*
+     * 録音停止
+     */
+    stopButton.addEventListener(
+      "click",
+      () => {
+        if (
+          !mediaRecorder ||
+          !analysisInProgress
+        ) {
+          return;
+        }
+
+        recordingDuration =
+          (Date.now() -
+            recordingStartTime) /
+          1000;
+
+        console.log(
+          "ゲスト録音時間:",
+          recordingDuration,
+          "秒"
+        );
+
+        mediaRecorder.stop();
+
+        audioStream
+          .getTracks()
+          .forEach((track) => {
+            track.stop();
+          });
+
+        status.textContent =
+          "分析中...";
+
+        startButton.disabled =
+          true;
+
+        stopButton.disabled =
+          true;
+      }
+    );
+  });
+</script>
