@@ -1,9 +1,10 @@
 class CreatePracticeService
-  def initialize(user:, practice_theme:, audio:, duration:)
+  def initialize(user:, practice_theme:, audio:, duration:, video: nil)
     @user = user
     @practice_theme = practice_theme
     @audio = audio
     @duration = duration
+    @video = video
   end
 
   def call
@@ -62,6 +63,7 @@ class CreatePracticeService
     )
 
     practice.audio.attach(@audio)
+    practice.video.attach(@video) if @video.present?
     practice.save!
 
     practice

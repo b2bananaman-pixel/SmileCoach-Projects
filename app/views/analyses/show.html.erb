@@ -60,6 +60,18 @@
         </div>
       </div>
 
+      <% if @analysis.practice.video.attached? %>
+        <div class="card shadow-sm mb-4">
+          <div class="card-body">
+            <h2 class="h4 mb-3">録画データ</h2>
+
+            <%= video_tag url_for(@analysis.practice.video),
+                          controls: true,
+                          class: "w-100 rounded" %>
+          </div>
+        </div>
+      <% end %>
+
       <% if @analysis.practice.audio.attached? %>
         <div class="card shadow-sm mb-4">
           <div class="card-body">
