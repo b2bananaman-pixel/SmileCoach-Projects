@@ -14,6 +14,7 @@ class PracticeThemesController < ApplicationController
       user: current_user,
       practice_theme: PracticeTheme.find(params[:id]),
       audio: params[:audio],
+      video: params[:video],
       duration: params[:duration]
     ).call
 
