@@ -5,7 +5,10 @@ Rails.application.routes.draw do
 
   post "internal/practice_retention", to: "internal/practice_retention#destroy"
 
-  resources :analyses, only: [ :show ]
+  resources :analyses, only: [ :show ] do
+    patch :smile_score, on: :member
+  end
+
   resources :practice_themes, only: [ :index, :show ] do
     post :create_practice, on: :member
   end
