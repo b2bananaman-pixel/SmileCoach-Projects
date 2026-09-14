@@ -67,4 +67,41 @@ class AnalysesControllerTest < ActionDispatch::IntegrationTest
     assert_select "h2", text: "今回の改善ポイント"
     assert_select "p", text: "今回の分析結果を確認して、次回の接客練習に活かしましょう。"
   end
+
+    test "笑顔スコアを保存できる" do
+    sign_in @user
+
+    patch smile_score_analysis_path(@analysis),
+          params: { smile_score: 60 },
+          as: :json
+
+    assert_response :success
+    assert_equal 60, @analysis.reload.smile_score
+    assert_equal({ "smile_score" => 60 }, response.parsed_body)
+  end
+
+  test "他ユーザーの笑顔スコアは更新できない" do
+    sign_in @user
+
+    other_analysis = analyses(:two)
+
+    patch smile_score_analysis_path(other_analysis),
+          params: { smile_score: 60 },
+          as: :json
+
+    assert_response :not_found
+  end
+
+    test "笑顔スコアが0から100の範囲外の場合は保存しない" do
+    sign_in @user
+
+    original_score = @analysis.smile_score
+
+    patch smile_score_analysis_path(@analysis),
+          params: { smile_score: 101 },
+          as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal original_score, @analysis.reload.smile_score
+  end
 end
