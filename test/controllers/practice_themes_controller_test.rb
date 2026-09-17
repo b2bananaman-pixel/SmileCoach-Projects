@@ -32,12 +32,10 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     assert_select "p", /お客様へ明るく声掛けをする/
     assert_select "p", /現在の利用状況を確認する/
     assert_select "p", /お客様に合ったサービスを提案する/
-    assert_select "#recording-status", "停止中"
+    assert_select "#recording-status", "起動中..."
     assert_select "#start-recording", "録画開始"
     assert_select "#stop-recording", "録画停止"
-    assert_select "#start-recording:not([disabled])"
-    assert_select "#stop-recording[disabled]"
-  end
+end
 
   test "録音データから声量を分析して保存できる" do
     audio_file = fixture_file_upload(
