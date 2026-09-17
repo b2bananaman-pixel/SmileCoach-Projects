@@ -1,3 +1,8 @@
+<script
+  src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"
+  crossorigin="anonymous">
+</script>
+
 <div class="container py-5">
   <h1 class="text-center mb-5">接客練習</h1>
 
@@ -12,7 +17,6 @@
 
           <div class="border rounded p-3 mb-4">
             <h3 class="h5 mb-3">👤 お客様像</h3>
-
             <p class="card-text mb-0">
               <%= simple_format(
                 @practice_theme.description.split("接客条件：").first.sub("お客様像：", "")
@@ -22,7 +26,6 @@
 
           <div class="border rounded p-3">
             <h3 class="h5 mb-3">🎯 今回の接客ポイント</h3>
-
             <p class="card-text mb-0">
               <%= simple_format(
                 @practice_theme.description.split("接客条件：").last
@@ -32,26 +35,109 @@
         </div>
       </div>
 
-      <div class="card shadow-sm text-center">
+      <div
+        class="card shadow-sm text-center"
+        data-controller="video-background"
+        data-video-background-create-url-value="<%= create_practice_practice_theme_path(@practice_theme) %>"
+      >
         <div class="card-body py-4">
 
+          <h2 class="h5 mb-3">背景を選択</h2>
+
           <div class="mb-4">
-            <video id="video-preview" class="w-100 rounded" autoplay muted playsinline style="max-height: 400px;"></video>
+            <button
+              type="button"
+              data-video-background-target="backgroundButton"
+              data-background="none"
+              data-action="click->video-background#selectBackground"
+              aria-pressed="true"
+              class="btn btn-outline-secondary me-2">
+              背景なし
+            </button>
+
+            <button
+              type="button"
+              data-video-background-target="backgroundButton"
+              data-background="office1"
+              data-background-url="<%= asset_path('office1.jpg') %>"
+              data-action="click->video-background#selectBackground"
+              aria-pressed="false"
+              class="btn btn-outline-secondary me-2">
+              オフィス①
+            </button>
+
+            <button
+              type="button"
+              data-video-background-target="backgroundButton"
+              data-background="office2"
+              data-background-url="<%= asset_path('office2.jpg') %>"
+              data-action="click->video-background#selectBackground"
+              aria-pressed="false"
+              class="btn btn-outline-secondary me-2">
+              オフィス②
+            </button>
+
+            <button
+              type="button"
+              data-video-background-target="backgroundButton"
+              data-background="simple"
+              data-background-url="<%= asset_path('simple.jpg') %>"
+              data-action="click->video-background#selectBackground"
+              aria-pressed="false"
+              class="btn btn-outline-secondary">
+              シンプル
+            </button>
           </div>
+
+          <div class="mb-4">
+            <div
+              class="mx-auto"
+              style="
+                width: 100%;
+                max-width: 640px;
+              "
+            >
+              <video
+                data-video-background-target="sourceVideo"
+                class="d-none"
+                autoplay
+                muted
+                playsinline>
+              </video>
+
+              <canvas
+                data-video-background-target="preview"
+                class="w-100 rounded">
+              </canvas>
+            </div>
+          </div>
+
           <h2 class="h5 mb-3">録画状態</h2>
 
-          <p id="recording-status" class="mb-4">
-            停止中
+          <p
+            id="recording-status"
+            data-video-background-target="status"
+            class="mb-4">
+            起動中...
           </p>
 
-          <button id="start-recording"
-                  class="btn btn-primary me-2">
+          <button
+            id="start-recording"
+            type="button"
+            data-video-background-target="startButton"
+            data-action="click->video-background#startRecording"
+            class="btn btn-primary me-2"
+            disabled>
             録画開始
           </button>
 
-          <button id="stop-recording"
-                  class="btn btn-secondary"
-                  disabled>
+          <button
+            id="stop-recording"
+            type="button"
+            data-video-background-target="stopButton"
+            data-action="click->video-background#stopRecording"
+            class="btn btn-secondary"
+            disabled>
             録画停止
           </button>
 
@@ -61,219 +147,3 @@
     </div>
   </div>
 </div>
-
-<script>
-  document.addEventListener("turbo:load", async () => {
-    const startButton = document.getElementById("start-recording");
-    const stopButton = document.getElementById("stop-recording");
-    const status = document.getElementById("recording-status");
-    const videoPreview = document.getElementById("video-preview");
-
-    if (!startButton || !stopButton || !status || !videoPreview) return;
-
-    let audioRecorder;
-    let videoRecorder;
-    let mediaStream;
-    let audioChunks = [];
-    let videoChunks = [];
-    let recordingStartTime;
-    let recordingDuration;
-    let savingInProgress = false;
-    let audioRecordingStopped = false;
-    let videoRecordingStopped = false;
-
-    const sendRecordings = async () => {
-      if (!audioRecordingStopped || !videoRecordingStopped) return;
-
-      const recordedAudio = new Blob(audioChunks, {
-        type: "audio/webm"
-      });
-
-      const recordedVideo = new Blob(videoChunks, {
-        type: "video/webm"
-      });
-
-      console.log("音声データを取得しました:", recordedAudio);
-      console.log("音声データサイズ:", recordedAudio.size, "bytes");
-      console.log("動画データを取得しました:", recordedVideo);
-      console.log("動画データサイズ:", recordedVideo.size, "bytes");
-
-      const formData = new FormData();
-
-      formData.append(
-        "audio",
-        recordedAudio,
-        "practice_audio.webm"
-      );
-
-      formData.append(
-        "video",
-        recordedVideo,
-        "practice_video.webm"
-      );
-
-      formData.append("duration", recordingDuration);
-
-      console.log(
-        "音声データをサーバーへ送信します:",
-        formData.get("audio")
-      );
-
-      console.log(
-        "動画データをサーバーへ送信します:",
-        formData.get("video")
-      );
-
-      try {
-        const response = await fetch(
-          "<%= create_practice_practice_theme_path(@practice_theme) %>",
-          {
-            method: "POST",
-            headers: {
-              "X-CSRF-Token": document.querySelector(
-                'meta[name="csrf-token"]'
-              ).content
-            },
-            body: formData
-          }
-        );
-
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-          console.log("Practiceを作成しました:", data.practice_id);
-          console.log("Analysisを作成しました:", data.analysis_id);
-
-          window.location.href = `/analyses/${data.analysis_id}`;
-        } else {
-          console.error("Practiceの保存に失敗しました:", data);
-          status.textContent = "録画の保存に失敗しました";
-          savingInProgress = false;
-          startButton.disabled = false;
-          stopButton.disabled = true;
-        }
-      } catch (error) {
-        console.error("サーバーへの送信に失敗しました:", error);
-        status.textContent = "録画の保存に失敗しました";
-        savingInProgress = false;
-        startButton.disabled = false;
-        stopButton.disabled = true;
-      }
-    };
-
-    /*
-     * ページ表示時にカメラとマイクを起動
-     * 録画開始前のプレビューを表示する
-     */
-    try {
-      mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: true
-      });
-
-      videoPreview.srcObject = mediaStream;
-      status.textContent = "録画前プレビュー";
-
-      const audioStream = new MediaStream(
-        mediaStream.getAudioTracks()
-      );
-
-      audioRecorder = new MediaRecorder(audioStream);
-      videoRecorder = new MediaRecorder(mediaStream);
-
-      audioRecorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      });
-
-      videoRecorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) {
-          videoChunks.push(event.data);
-        }
-      });
-
-      audioRecorder.addEventListener("stop", () => {
-        audioRecordingStopped = true;
-        sendRecordings();
-      });
-
-      videoRecorder.addEventListener("stop", () => {
-        videoRecordingStopped = true;
-        sendRecordings();
-      });
-    } catch (error) {
-      console.error(
-        "カメラとマイクの開始に失敗しました:",
-        error
-      );
-
-      status.textContent =
-        "カメラとマイクへのアクセスが許可されませんでした";
-
-      startButton.disabled = true;
-    }
-
-    /*
-     * 録画開始
-     */
-    startButton.addEventListener("click", () => {
-      if (
-        !audioRecorder ||
-        !videoRecorder ||
-        savingInProgress
-      ) {
-        return;
-      }
-
-      audioChunks = [];
-      videoChunks = [];
-      audioRecordingStopped = false;
-      videoRecordingStopped = false;
-
-      recordingStartTime = Date.now();
-
-      audioRecorder.start();
-      videoRecorder.start();
-
-      status.textContent = "録画中";
-      startButton.disabled = true;
-      stopButton.disabled = false;
-    });
-
-    /*
-     * 録画停止
-     */
-    stopButton.addEventListener("click", () => {
-      if (
-        !audioRecorder ||
-        !videoRecorder ||
-        savingInProgress
-      ) {
-        return;
-      }
-
-      savingInProgress = true;
-
-      recordingDuration =
-        (Date.now() - recordingStartTime) / 1000;
-
-      console.log(
-        "録画時間:",
-        recordingDuration,
-        "秒"
-      );
-
-      audioRecorder.stop();
-      videoRecorder.stop();
-
-      mediaStream.getTracks().forEach((track) => track.stop());
-
-      videoPreview.srcObject = null;
-
-      status.textContent = "保存中...";
-      startButton.disabled = true;
-      stopButton.disabled = true;
-    });
-  });
-</script>
