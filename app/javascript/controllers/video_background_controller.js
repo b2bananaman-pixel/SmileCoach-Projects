@@ -245,21 +245,18 @@ export default class extends Controller {
   }
 
   selectBackground(event) {
-    const background =
-      event.currentTarget.dataset.background;
+    const button =
+      event.currentTarget;
 
-    const backgroundImages = {
-      office1: "/assets/office1.jpg",
-      office2: "/assets/office2.jpg",
-      simple: "/assets/simple.jpg"
-    };
+    const background =
+      button.dataset.background;
 
     if (background === "none") {
       this.selectedBackground = null;
       this.backgroundImage = null;
     } else {
       this.selectedBackground =
-        backgroundImages[background];
+        button.dataset.backgroundUrl;
 
       this.loadBackgroundImage(
         this.selectedBackground
@@ -267,10 +264,10 @@ export default class extends Controller {
     }
 
     this.backgroundButtonTargets.forEach(
-      (button) => {
-        button.setAttribute(
+      (backgroundButton) => {
+        backgroundButton.setAttribute(
           "aria-pressed",
-          button.dataset.background === background
+          backgroundButton.dataset.background === background
             ? "true"
             : "false"
         );
@@ -283,7 +280,6 @@ export default class extends Controller {
      */
     this.resetMaskHistory();
   }
-
   loadBackgroundImage(src) {
     const image =
       new Image();
