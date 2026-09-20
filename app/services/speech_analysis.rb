@@ -36,7 +36,12 @@ class SpeechAnalysis
 
     nm.parse(@transcription.to_s) do |node|
       value = node.feature.split(",")[7]
-      reading << value if value.present? && value != "*"
+
+      if value.present? && value != "*"
+        reading << value
+      else
+        reading << node.surface
+      end
     end
 
     count_mora(reading)

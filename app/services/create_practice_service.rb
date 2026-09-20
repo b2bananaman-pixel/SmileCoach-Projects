@@ -62,11 +62,26 @@ class CreatePracticeService
       duration: @duration
     )
 
-    practice.audio.attach(@audio)
+    extracted_audio = nil
+
+    if @audio.present?
+      practice.audio.attach(@audio)
+    elsif @video.present?
+      extracted_audio = VideoAudioExtractor.new(@video.tempfile).call
+
+      practice.audio.attach(
+        io: extracted_audio,
+        filename: "practice_audio.webm",
+        content_type: "audio/webm"
+      )
+    end
+
     practice.video.attach(@video) if @video.present?
     practice.save!
 
     practice
+  ensure
+    extracted_audio&.close!
   end
 
   def transcribe(practice)
