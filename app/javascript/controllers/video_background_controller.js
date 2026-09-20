@@ -10,8 +10,13 @@ export default class extends Controller {
     "preview",
     "startButton",
     "stopButton",
-    "backgroundButton"
+    "backgroundButton",
+    "status"
   ];
+
+  static values = {
+    createUrl: String
+  };
 
   connect() {
     this.selectedBackground = null;
@@ -54,6 +59,9 @@ export default class extends Controller {
      * 実際のカメラ比率
      */
     this.videoAspectRatio = 4 / 3;
+
+    this.cameraReady = false;
+    this.segmenterReady = false;
 
     this.setupCamera();
     this.setupSegmenter();
@@ -121,11 +129,11 @@ export default class extends Controller {
         this.sourceVideoTarget.videoHeight;
 
       console.log(
-        "実際のカメラ解像度:",
-        actualWidth,
-        "x",
-        actualHeight
+        "ImageSegmenterの準備が完了しました"
       );
+
+      this.segmenterReady = true;
+      this.updateRecordingReadyState();
 
       if (
         actualWidth > 0 &&
@@ -145,6 +153,9 @@ export default class extends Controller {
       this.setupCanvasSize();
 
       this.drawPreview();
+
+      this.cameraReady = true;
+      this.updateRecordingReadyState();
     } catch (error) {
       console.error(
         "カメラの起動に失敗しました:",
@@ -236,6 +247,9 @@ export default class extends Controller {
       console.log(
         "ImageSegmenterの準備が完了しました"
       );
+
+      this.segmenterReady = true;
+      this.updateRecordingReadyState();
     } catch (error) {
       console.error(
         "ImageSegmenterの起動に失敗しました:",
@@ -243,6 +257,21 @@ export default class extends Controller {
       );
     }
   }
+
+  updateRecordingReadyState() {
+    if (
+      this.cameraReady &&
+      this.segmenterReady
+    ) {
+      this.startButtonTarget.disabled = false;
+
+      if (this.hasStatusTarget) {
+        this.statusTarget.textContent =
+          "録画前プレビュー";
+      }
+    }
+  }
+
 
   selectBackground(event) {
     const button =
@@ -1104,6 +1133,11 @@ export default class extends Controller {
 
     this.mediaRecorder.start();
 
+    if (this.hasStatusTarget) {
+      this.statusTarget.textContent =
+        "録画中";
+    }
+
     this.startButtonTarget.disabled =
       true;
 
@@ -1134,26 +1168,42 @@ export default class extends Controller {
           type: "video/webm"
         }
       );
-
+  
     this.recordedChunks = [];
-
-    this.sendRecording(blob);
-  }
-
-  async sendRecording(blob) {
-    const form =
-      this.element.closest("form");
-
-    if (!form) {
-      console.error(
-        "録画フォームが見つかりません"
+  
+    const video =
+      document.createElement("video");
+  
+    const url =
+      URL.createObjectURL(blob);
+  
+    video.preload = "metadata";
+    video.src = url;
+  
+    video.onloadedmetadata = () => {
+      const duration =
+        video.duration;
+  
+      URL.revokeObjectURL(url);
+  
+      this.sendRecording(
+        blob,
+        duration
       );
-
-      return;
-    }
-
+    };
+  
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+  
+      console.error(
+        "録画動画の長さを取得できませんでした"
+      );
+    };
+  }
+  
+  async sendRecording(blob, duration) {
     const formData =
-      new FormData(form);
+      new FormData();
 
     formData.set(
       "video",
@@ -1161,16 +1211,27 @@ export default class extends Controller {
       "practice_video.webm"
     );
 
+    formData.set(
+      "duration",
+      duration
+    );
+
     try {
+      const csrfToken =
+        document.querySelector(
+          'meta[name="csrf-token"]'
+        ).content;
+
       const response =
         await fetch(
-          form.action,
+          this.createUrlValue,
           {
-            method:
-              form.method || "POST",
+            method: "POST",
             body: formData,
             headers: {
-              Accept: "text/html"
+              Accept: "application/json",
+              "X-CSRF-Token":
+                csrfToken
             }
           }
         );
@@ -1181,12 +1242,20 @@ export default class extends Controller {
         );
       }
 
-      const html =
-        await response.text();
+      const result =
+        await response.json();
 
-      document.open();
-      document.write(html);
-      document.close();
+      if (
+        !result.success ||
+        !result.analysis_id
+      ) {
+        throw new Error(
+          "分析結果IDを取得できませんでした"
+        );
+      }
+
+      window.location.href =
+        `/analyses/${result.analysis_id}`;
     } catch (error) {
       console.error(
         "録画データの送信に失敗しました:",

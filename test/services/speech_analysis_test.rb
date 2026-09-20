@@ -182,4 +182,13 @@ class SpeechAnalysisTest < ActiveSupport::TestCase
 
     assert_equal 0, analysis.filler_score
   end
+
+  test "MeCabで読みが取得できない文字列でも表層形からモーラ数を計算できる" do
+    analysis = SpeechAnalysis.new(
+      transcription: "テストテストテストテスト",
+      duration: 2.0
+    )
+
+    assert_equal 12, analysis.mora_count
+  end
 end
