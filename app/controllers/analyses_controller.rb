@@ -19,11 +19,39 @@ class AnalysesController < ApplicationController
                            .find_by!(analyses: { id: params[:id] })
                            .analysis
 
-    score = params[:smile_score].to_i
-    return head :unprocessable_entity unless score.between?(0, 100)
+    if params[:smile_score].present?
+      score = params[:smile_score].to_i
+      return head :unprocessable_entity unless score.between?(0, 100)
 
-    analysis.update!(smile_score: score)
+      total_score =
+        (
+          analysis.speech_speed_score +
+          analysis.filler_score +
+          analysis.volume_score +
+          score
+        ) / 4.0
 
-    render json: { smile_score: analysis.smile_score }
+      analysis.update!(
+        smile_score: score,
+        total_score: total_score.round
+      )
+    else
+      total_score =
+        (
+          analysis.speech_speed_score +
+          analysis.filler_score +
+          analysis.volume_score
+        ) / 3.0
+
+      analysis.update!(
+        smile_score: nil,
+        total_score: total_score.round
+      )
+    end
+
+    render json: {
+      smile_score: analysis.smile_score,
+      total_score: analysis.total_score
+    }
   end
 end

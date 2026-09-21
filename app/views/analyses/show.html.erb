@@ -9,8 +9,19 @@
           <h2 class="h4 mb-3">総合スコア</h2>
 
           <p class="display-3 fw-bold mb-0">
-            <%= @analysis.total_score %>
-            <span class="fs-4">点</span>
+            <span data-smile-analysis-total-score>
+              <%= if @analysis.smile_score.present? && @analysis.total_score.present?
+                    @analysis.total_score
+                  else
+                    "分析中..."
+                  end %>
+            </span>
+            <span
+              class="fs-4"
+              data-smile-analysis-total-score-unit
+            >
+              <%= "点" if @analysis.smile_score.present? && @analysis.total_score.present? %>
+            </span>
           </p>
         </div>
       </div>
@@ -26,7 +37,6 @@
                 <%= @analysis.speech_speed_score %>点
               </span>
             </div>
-
             <p class="mb-0 mt-2">
               <%= number_with_precision(@analysis.speech_speed, precision: 2) %> 文字/秒
             </p>
@@ -45,7 +55,7 @@
             </p>
           </div>
 
-          <div class="border rounded p-3">
+          <div class="border rounded p-3 mb-3">
             <div class="d-flex justify-content-between align-items-center">
               <h3 class="h5 mb-0">声量</h3>
               <span class="fw-bold">
@@ -58,20 +68,33 @@
             </p>
           </div>
 
-          <% if @analysis.smile_score.present? %>
-            <div class="border rounded p-3">
-              <div class="d-flex justify-content-between align-items-center">
-                <h3 class="h5 mb-0">笑顔</h3>
-                <span class="fw-bold">
-                  <%= @analysis.smile_score %>点
+          <div
+            class="border rounded p-3"
+            data-smile-analysis-smile-score-section
+          >
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="h5 mb-0">笑顔</h3>
+              <span class="fw-bold">
+                <span data-smile-analysis-smile-score>
+                  <%= @analysis.smile_score || "分析中..." %>
                 </span>
-              </div>
-
-              <p class="mb-0 mt-2">
-                表情から笑顔を分析しました
-              </p>
+                <span data-smile-analysis-smile-score-unit>
+                  <%= "点" if @analysis.smile_score.present? %>
+                </span>
+              </span>
             </div>
-          <% end %>
+
+            <p
+              class="mb-0 mt-2"
+              data-smile-analysis-smile-message
+            >
+              <% if @analysis.smile_score.present? %>
+                表情から笑顔を分析しました
+              <% else %>
+                録画データから笑顔を分析しています...
+              <% end %>
+            </p>
+          </div>
         </div>
       </div>
 

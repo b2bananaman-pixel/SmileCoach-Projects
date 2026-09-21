@@ -207,6 +207,8 @@ export default class extends Controller {
         "笑顔を解析できるフレームがありませんでした"
       )
 
+      this.saveSmileScore(null)
+
       return
     }
 
@@ -370,10 +372,28 @@ export default class extends Controller {
 
       const data = await response.json()
 
-      console.log(
-        "笑顔スコアを保存しました:",
-        data.smile_score
-      )
+      if (data.smile_score === null) {
+        console.log(
+          "笑顔スコアは保存せず、3項目平均の総合スコアを保存しました:",
+          data.total_score
+        )
+
+        this.updateSmileAnalysisUnavailableDisplay()
+      } else {
+        console.log(
+          "笑顔スコアを保存しました:",
+          data.smile_score
+        )
+
+        console.log(
+          "4項目平均の総合スコアを保存しました:",
+          data.total_score
+        )
+
+        this.updateSmileScoreDisplay(data.smile_score)
+      }
+
+      this.updateTotalScoreDisplay(data.total_score)
     } catch (error) {
       console.error(
         "笑顔スコアの保存に失敗しました:",
@@ -381,5 +401,112 @@ export default class extends Controller {
       )
     }
   }
-}
 
+  updateSmileScoreDisplay(smileScore) {
+    const smileScoreElement =
+      document.querySelector(
+        "[data-smile-analysis-smile-score]"
+      )
+
+    const smileScoreUnitElement =
+      document.querySelector(
+        "[data-smile-analysis-smile-score-unit]"
+      )
+
+    const smileMessageElement =
+      document.querySelector(
+        "[data-smile-analysis-smile-message]"
+      )
+
+    if (!smileScoreElement) {
+      console.log(
+        "笑顔スコアの表示要素が見つかりませんでした"
+      )
+
+      return
+    }
+
+    smileScoreElement.textContent = smileScore
+
+    if (smileScoreUnitElement) {
+      smileScoreUnitElement.textContent = "点"
+    }
+
+    if (smileMessageElement) {
+      smileMessageElement.textContent =
+        "表情から笑顔を分析しました"
+    }
+
+    console.log(
+      "画面の笑顔スコアを更新しました:",
+      smileScore
+    )
+  }
+
+  updateSmileAnalysisUnavailableDisplay() {
+    const smileScoreElement =
+      document.querySelector(
+        "[data-smile-analysis-smile-score]"
+      )
+
+    const smileScoreUnitElement =
+      document.querySelector(
+        "[data-smile-analysis-smile-score-unit]"
+      )
+
+    const smileMessageElement =
+      document.querySelector(
+        "[data-smile-analysis-smile-message]"
+      )
+
+    if (smileScoreElement) {
+      smileScoreElement.textContent =
+        "分析できませんでした"
+    }
+
+    if (smileScoreUnitElement) {
+      smileScoreUnitElement.textContent = ""
+    }
+
+    if (smileMessageElement) {
+      smileMessageElement.textContent =
+        "笑顔を分析できませんでした"
+    }
+
+    console.log(
+      "笑顔分析ができなかったため、笑顔スコアを表示しませんでした"
+    )
+  }
+
+  updateTotalScoreDisplay(totalScore) {
+    const totalScoreElement =
+      document.querySelector(
+        "[data-smile-analysis-total-score]"
+      )
+
+    const totalScoreUnitElement =
+      document.querySelector(
+        "[data-smile-analysis-total-score-unit]"
+      )
+
+    if (!totalScoreElement) {
+      console.log(
+        "総合スコアの表示要素が見つかりませんでした"
+      )
+
+      return
+    }
+
+    totalScoreElement.textContent = totalScore
+
+    if (totalScoreUnitElement) {
+      totalScoreUnitElement.textContent = "点"
+    }
+
+    console.log(
+      "画面の総合スコアを更新しました:",
+      totalScore
+    )
+  }
+
+}

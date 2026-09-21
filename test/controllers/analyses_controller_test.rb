@@ -68,7 +68,7 @@ class AnalysesControllerTest < ActionDispatch::IntegrationTest
     assert_select "p", text: "今回の分析結果を確認して、次回の接客練習に活かしましょう。"
   end
 
-    test "笑顔スコアを保存できる" do
+  test "笑顔スコアを保存できる" do
     sign_in @user
 
     patch smile_score_analysis_path(@analysis),
@@ -77,7 +77,27 @@ class AnalysesControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_equal 60, @analysis.reload.smile_score
-    assert_equal({ "smile_score" => 60 }, response.parsed_body)
+    assert_equal 16, @analysis.reload.total_score
+    assert_equal(
+      { "smile_score" => 60, "total_score" => 16 },
+      response.parsed_body
+    )
+  end
+
+  test "笑顔を分析できない場合は笑顔スコアを保存せず3項目平均で総合スコアを保存する" do
+    sign_in @user
+
+    patch smile_score_analysis_path(@analysis),
+          params: { smile_score: nil },
+          as: :json
+
+    assert_response :success
+    assert_nil @analysis.reload.smile_score
+    assert_equal 1, @analysis.reload.total_score
+    assert_equal(
+      { "smile_score" => nil, "total_score" => 1 },
+      response.parsed_body
+    )
   end
 
   test "他ユーザーの笑顔スコアは更新できない" do
@@ -92,7 +112,7 @@ class AnalysesControllerTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
-    test "笑顔スコアが0から100の範囲外の場合は保存しない" do
+  test "笑顔スコアが0から100の範囲外の場合は保存しない" do
     sign_in @user
 
     original_score = @analysis.smile_score
