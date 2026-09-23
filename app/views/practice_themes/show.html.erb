@@ -36,7 +36,7 @@
       </div>
 
       <div
-        class="card shadow-sm text-center"
+        class="card shadow-sm text-center mb-4"
         data-controller="video-background"
         data-video-background-create-url-value="<%= create_practice_practice_theme_path(@practice_theme) %>"
       >
@@ -140,6 +140,99 @@
             disabled>
             録画停止
           </button>
+
+        </div>
+      </div>
+
+      <div
+        class="card shadow-sm"
+        data-controller="ai-roleplay"
+        data-ai-roleplay-transcribe-url-value="<%= ai_roleplays_transcribe_path %>"
+        data-ai-roleplay-respond-url-value="<%= ai_roleplays_respond_path %>"
+        data-ai-roleplay-synthesize-url-value="<%= ai_roleplays_synthesize_path %>"
+      >
+        <div class="card-body py-4">
+
+          <h2 class="h5 mb-3">
+            AIロープレ1ターン 技術検証
+          </h2>
+
+          <p class="text-muted mb-4">
+            店員として話した内容をAI顧客が聞き取り、
+            顧客役として音声で返答します。
+          </p>
+
+          <div class="border rounded p-3 mb-4 text-center">
+            <div
+              class="mb-2"
+              style="font-size: 3rem;"
+              aria-hidden="true">
+              👤
+            </div>
+
+            <strong>AI顧客</strong>
+
+            <p
+              data-ai-roleplay-target="status"
+              class="mt-3 mb-0">
+              AIロープレ準備中...
+            </p>
+          </div>
+
+          <div class="text-center mb-4">
+            <button
+              type="button"
+              data-ai-roleplay-target="startTurnButton"
+              data-action="click->ai-roleplay#startTurn"
+              class="btn btn-success me-2">
+              店員の発話開始
+            </button>
+
+            <button
+              type="button"
+              data-ai-roleplay-target="stopTurnButton"
+              data-action="click->ai-roleplay#stopTurn"
+              class="btn btn-danger"
+              disabled>
+              店員の発話終了
+            </button>
+          </div>
+
+          <div class="border rounded p-3 mb-3">
+            <h3 class="h6 mb-2">
+              店員の文字起こし
+            </h3>
+
+            <p
+              data-ai-roleplay-target="transcription"
+              class="mb-0">
+              まだ発話されていません。
+            </p>
+          </div>
+
+          <div class="border rounded p-3 mb-3">
+            <h3 class="h6 mb-2">
+              AI顧客の返答
+            </h3>
+
+            <p
+              data-ai-roleplay-target="aiReply"
+              class="mb-0">
+              まだ返答はありません。
+            </p>
+          </div>
+
+          <div class="border rounded p-3">
+            <h3 class="h6 mb-2">
+              AI顧客の状態
+            </h3>
+
+            <p
+              data-ai-roleplay-target="customerState"
+              class="mb-0">
+              -
+            </p>
+          </div>
 
         </div>
       </div>
