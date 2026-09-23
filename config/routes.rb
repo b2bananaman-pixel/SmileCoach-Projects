@@ -13,6 +13,10 @@ Rails.application.routes.draw do
     post :create_practice, on: :member
   end
 
+  post "ai_roleplays/synthesize", to: "ai_roleplays#synthesize"
+  post "ai_roleplays/respond", to: "ai_roleplays#respond"
+  post "ai_roleplays/transcribe", to: "ai_roleplays#transcribe"
+
   get "guest/practice_themes", to: "guest_practice_themes#index"
   get "guest/practice_themes/:id", to: "guest_practice_themes#show", as: :guest_practice_theme
   post "guest/practice_themes/:id/create_practice",

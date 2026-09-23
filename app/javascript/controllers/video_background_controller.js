@@ -27,6 +27,28 @@ export default class extends Controller {
     this.mediaRecorder = null;
     this.recordedChunks = [];
 
+    /*
+     * AIロープレ録音用 Audio Mixer
+     *
+     * 店員のマイク音声とAI顧客のTTS音声を
+     * Web Audio APIで1本の音声トラックにまとめる。
+     */
+    this.audioContext = null;
+    this.microphoneSource = null;
+    this.recordingDestination = null;
+
+    /*
+     * AI顧客のTTS音声を受け取るための
+     * カスタムイベント。
+     */
+    this.handleAiAudio =
+      this.handleAiAudio.bind(this);
+
+    window.addEventListener(
+      "ai-roleplay:play-audio",
+      this.handleAiAudio
+    );
+
     this.segmenter = null;
     this.isProcessing = false;
 
@@ -68,6 +90,11 @@ export default class extends Controller {
   }
 
   disconnect() {
+    window.removeEventListener(
+      "ai-roleplay:play-audio",
+      this.handleAiAudio
+    );
+    
     this.stopCamera();
 
     if (
@@ -75,6 +102,8 @@ export default class extends Controller {
       this.mediaRecorder.state !== "inactive"
     ) {
       this.mediaRecorder.stop();
+    } else {
+      this.cleanupAudioMixer();
     }
 
     this.mediaRecorder = null;
@@ -219,6 +248,145 @@ export default class extends Controller {
       });
 
     this.mediaStream = null;
+  }
+
+  async cleanupAudioMixer() {
+    if (this.microphoneSource) {
+      try {
+        this.microphoneSource.disconnect();
+      } catch (error) {
+        console.warn(
+          "マイク音声の切断に失敗しました:",
+          error
+        );
+      }
+
+      this.microphoneSource = null;
+    }
+
+    if (this.recordingDestination) {
+      this.recordingDestination.stream
+        .getTracks()
+        .forEach((track) => {
+          track.stop();
+        });
+
+      this.recordingDestination = null;
+    }
+
+    if (this.audioContext) {
+      try {
+        if (
+          this.audioContext.state !==
+          "closed"
+        ) {
+          await this.audioContext.close();
+        }
+      } catch (error) {
+        console.warn(
+          "AudioContextの終了に失敗しました:",
+          error
+        );
+      }
+
+      this.audioContext = null;
+    }
+  }
+
+  async handleAiAudio(event) {
+    if (
+      !this.audioContext ||
+      !this.recordingDestination ||
+      this.audioContext.state === "closed"
+    ) {
+      return;
+    }
+
+    const {
+      audioBlob,
+      markHandled,
+      resolve,
+      reject
+    } = event.detail || {};
+
+    if (!audioBlob) {
+      return;
+    }
+
+    /*
+     * Audio Mixer側で再生を担当することを
+     * ai_roleplay_controllerへ通知する。
+     */
+    if (markHandled) {
+      markHandled();
+    }
+
+    try {
+      if (
+        this.audioContext.state ===
+        "suspended"
+      ) {
+        await this.audioContext.resume();
+      }
+
+      const arrayBuffer =
+        await audioBlob.arrayBuffer();
+
+      const audioBuffer =
+        await this.audioContext.decodeAudioData(
+          arrayBuffer
+        );
+
+      const source =
+        this.audioContext.createBufferSource();
+
+      source.buffer = audioBuffer;
+
+      /*
+       * AI音声をブラウザのスピーカーへ出力する。
+       */
+      source.connect(
+        this.audioContext.destination
+      );
+
+      /*
+       * 同じAI音声を録画用Audio Mixerにも送る。
+       *
+       * microphoneSourceも同じ
+       * recordingDestinationへ接続されているため、
+       * MediaRecorderには
+       *
+       * 店員マイク + AI顧客TTS
+       *
+       * の両方が入る。
+       */
+      source.connect(
+        this.recordingDestination
+      );
+
+      source.addEventListener(
+        "ended",
+        () => {
+          source.disconnect();
+
+          if (resolve) {
+            resolve();
+          }
+        },
+        { once: true }
+      );
+
+      source.start();
+    } catch (error) {
+      console.error(
+        "AI顧客音声のMixer再生に失敗しました:",
+        error
+      );
+
+      if (reject) {
+        reject(error);
+      }
+    }
   }
 
   async setupSegmenter() {
@@ -1061,16 +1229,76 @@ export default class extends Controller {
       canvas.captureStream(30);
 
     /*
-     * 音声
+     * 店員のマイク音声とAI顧客の音声を
+     * Web Audio APIで混合するための
+     * AudioContextを作成する。
      */
-    const audioTracks =
-      this.mediaStream.getAudioTracks();
+    const AudioContextClass =
+      window.AudioContext ||
+      window.webkitAudioContext;
 
-    audioTracks.forEach(
-      (track) => {
-        canvasStream.addTrack(track);
+    if (!AudioContextClass) {
+      console.error(
+        "Web Audio APIに対応していません"
+      );
+
+      return;
+    }
+
+    try {
+      this.audioContext =
+        new AudioContextClass();
+
+      if (
+        this.audioContext.state ===
+        "suspended"
+      ) {
+        await this.audioContext.resume();
       }
-    );
+
+      /*
+       * カメラ取得時に含まれている
+       * マイク音声をAudioContextへ接続する。
+       */
+      this.microphoneSource =
+        this.audioContext
+          .createMediaStreamSource(
+            this.mediaStream
+          );
+
+      /*
+       * 録画専用の出力先。
+       *
+       * ここへ接続された音声が
+       * MediaRecorderへ渡される。
+       */
+      this.recordingDestination =
+        this.audioContext
+          .createMediaStreamDestination();
+
+      this.microphoneSource.connect(
+        this.recordingDestination
+      );
+
+      /*
+       * 混合済み音声トラックを
+       * Canvasの映像Streamへ追加する。
+       */
+      this.recordingDestination.stream
+        .getAudioTracks()
+        .forEach((track) => {
+          canvasStream.addTrack(track);
+        });
+    } catch (error) {
+      console.error(
+        "録音用Audio Mixerの作成に失敗しました:",
+        error
+      );
+
+      await this.cleanupAudioMixer();
+
+      return;
+    }
 
     this.recordingStream =
       canvasStream;
@@ -1114,6 +1342,8 @@ export default class extends Controller {
         error
       );
 
+      await this.cleanupAudioMixer();
+
       return;
     }
 
@@ -1127,8 +1357,10 @@ export default class extends Controller {
       };
 
     this.mediaRecorder.onstop =
-      () => {
+      async () => {
         this.finishRecording();
+
+        await this.cleanupAudioMixer();
       };
 
     this.mediaRecorder.start();
