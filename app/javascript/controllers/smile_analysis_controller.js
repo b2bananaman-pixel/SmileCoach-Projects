@@ -8,7 +8,7 @@ export default class extends Controller {
   }
 
   static POST_SPEECH_WINDOW = 0.5
-  static ANALYSIS_INTERVAL = 0.2
+  static ANALYSIS_INTERVAL = 1.0
 
   async connect() {
     console.log("Smile analysis controller connected")
@@ -38,6 +38,8 @@ export default class extends Controller {
       )
 
       const analyzeVideo = () => {
+        const analysisStartedAt = performance.now()
+
         console.log("動画の読み込み完了")
         console.log("動画の長さ:", video.duration)
         console.log("話している区間:", this.speechSegmentsValue)
@@ -59,12 +61,63 @@ export default class extends Controller {
         let segmentIndex = 0
         let currentTime = this.speechSegmentsValue[0].start
         let frameCount = 0
+        let totalSeekMilliseconds = 0
+        let totalDetectionMilliseconds = 0
 
         const smileSamples = []
+
+        const logAnalysisDuration = () => {
+          const totalMilliseconds =
+            performance.now() - analysisStartedAt
+
+          const elapsedSeconds =
+            totalMilliseconds / 1000
+
+          const otherMilliseconds =
+            Math.max(
+              totalMilliseconds -
+                totalSeekMilliseconds -
+                totalDetectionMilliseconds,
+              0
+            )
+
+          console.log(
+            "笑顔分析処理時間:",
+            `${elapsedSeconds.toFixed(2)}秒`
+          )
+
+          console.log(
+            "シーク待ち時間合計:",
+            `${(totalSeekMilliseconds / 1000).toFixed(2)}秒`
+          )
+
+          console.log(
+            "MediaPipe推論時間合計:",
+            `${(totalDetectionMilliseconds / 1000).toFixed(2)}秒`
+          )
+
+          console.log(
+            "その他処理時間合計:",
+            `${(otherMilliseconds / 1000).toFixed(2)}秒`
+          )
+
+          if (frameCount > 0) {
+            console.log(
+              "1フレーム平均シーク時間:",
+              `${(totalSeekMilliseconds / frameCount).toFixed(2)}ms`
+            )
+
+            console.log(
+              "1フレーム平均MediaPipe推論時間:",
+              `${(totalDetectionMilliseconds / frameCount).toFixed(2)}ms`
+            )
+          }
+        }
 
         const analyzeFrame = () => {
           if (segmentIndex >= this.speechSegmentsValue.length) {
             this.displaySmileSummary(smileSamples)
+            logAnalysisDuration()
 
             console.log("話している区間の解析が完了しました")
             console.log("解析フレーム数:", frameCount)
@@ -74,6 +127,7 @@ export default class extends Controller {
 
           if (currentTime >= duration) {
             this.displaySmileSummary(smileSamples)
+            logAnalysisDuration()
 
             console.log(
               "動画終了時刻に到達したため解析を終了しました"
@@ -112,13 +166,21 @@ export default class extends Controller {
             duration - 0.001
           )
 
-          video.currentTime = analysisTime
+          const seekStartedAt = performance.now()
 
           const handleSeeked = () => {
+            totalSeekMilliseconds +=
+              performance.now() - seekStartedAt
+
+            const detectionStartedAt = performance.now()
+
             const result = faceLandmarker.detectForVideo(
               video,
               performance.now()
             )
+
+            totalDetectionMilliseconds +=
+              performance.now() - detectionStartedAt
 
             frameCount += 1
 
@@ -179,6 +241,8 @@ export default class extends Controller {
             handleSeeked,
             { once: true }
           )
+
+          video.currentTime = analysisTime
         }
 
         analyzeFrame()
@@ -508,5 +572,4 @@ export default class extends Controller {
       totalScore
     )
   }
-
 }
