@@ -62,3 +62,5 @@ group :test do
 end
 
 gem "googleauth"
+
+gem "google-cloud-storage", require: false

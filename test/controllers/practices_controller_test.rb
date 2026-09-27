@@ -150,13 +150,13 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
     assert_select ".alert.alert-info", "まだ練習履歴がありません。"
   end
 
-  test "練習履歴の保存期間についての案内が表示される" do
+  test "録音動画文字起こしの保存期間と分析結果を保持する案内が表示される" do
     get practices_url
 
     assert_response :success
     assert_select(
       "div.alert.alert-info",
-      text: /練習履歴・分析結果・録音データは、練習日から14日を過ぎると自動的に削除されます。/
+      text: /録音・動画・文字起こしデータは、練習日から14日を過ぎると自動的に削除されます。練習履歴・分析結果は引き続き確認できます。/
     )
   end
 

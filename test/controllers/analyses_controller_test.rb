@@ -56,6 +56,61 @@ class AnalysesControllerTest < ActionDispatch::IntegrationTest
     assert_select "audio", count: 0
   end
 
+  test "保持期限後に録音データを削除しても分析結果を表示できる" do
+    sign_in @user
+
+    practice = @analysis.practice
+
+    practice.audio.attach(
+      io: StringIO.new("fake audio data"),
+      filename: "practice.webm",
+      content_type: "audio/webm"
+    )
+
+    assert practice.audio.attached?
+
+    practice.audio.purge
+
+    assert_not practice.reload.audio.attached?
+    assert Analysis.exists?(@analysis.id)
+
+    get analysis_path(@analysis)
+
+    assert_response :success
+    assert_select "body"
+    assert_select "audio", count: 0
+  end
+
+  test "録音の実ファイルが欠損していても分析結果を表示できる" do
+    sign_in @user
+
+    practice = @analysis.practice
+    practice.update!(duration: 10.0)
+
+    practice.audio.attach(
+      io: StringIO.new("fake audio data"),
+      filename: "practice.webm",
+      content_type: "audio/webm"
+    )
+
+    assert practice.audio.attached?
+
+    blob = practice.audio.blob
+    service = ActiveStorage::Blob.service
+
+    assert service.exist?(blob.key)
+
+    service.delete(blob.key)
+
+    assert practice.reload.audio.attached?
+    assert_not service.exist?(blob.key)
+
+    get analysis_path(@analysis)
+
+    assert_response :success
+    assert_select "body"
+  end
+
   test "AIコメントがない場合はフォールバックメッセージが表示される" do
     sign_in @user
 
