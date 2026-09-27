@@ -1,0 +1,149 @@
+<div class="container py-4">
+  <div
+    data-controller="ai-roleplay"
+    data-ai-roleplay-transcribe-url-value="<%= ai_roleplays_transcribe_path %>"
+    data-ai-roleplay-respond-url-value="<%= ai_roleplays_respond_path %>"
+    data-ai-roleplay-synthesize-url-value="<%= ai_roleplays_synthesize_path %>"
+  >
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h1 class="h3 mb-1">
+          AIロープレ
+        </h1>
+
+        <p class="text-muted mb-0">
+          練習テーマ：<%= @practice_theme.name %>
+        </p>
+      </div>
+
+      <div class="text-end">
+        <div class="small text-muted">
+          残り時間
+        </div>
+
+        <div
+          data-ai-roleplay-target="timer"
+          class="fs-3 fw-bold">
+          10:00
+        </div>
+      </div>
+    </div>
+
+    <div
+      data-ai-roleplay-target="preparation"
+      class="alert alert-info text-center mb-4">
+      カメラとマイクを準備しています...
+    </div>
+
+    <div
+      data-ai-roleplay-target="countdown"
+      class="text-center mb-4 d-none">
+      <p class="mb-2">
+        まもなくロープレを開始します
+      </p>
+
+      <div
+        data-ai-roleplay-target="countdownNumber"
+        class="display-1 fw-bold">
+        3
+      </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+      <div class="col-md-8">
+        <div class="card shadow-sm h-100">
+          <div class="card-body text-center">
+            <h2 class="h5 mb-3">
+              あなた
+            </h2>
+
+            <div
+              class="bg-dark rounded overflow-hidden mx-auto"
+              style="
+                width: 100%;
+                max-width: 640px;
+                aspect-ratio: 4 / 3;
+              ">
+              <video
+                data-ai-roleplay-target="preview"
+                class="w-100 h-100"
+                style="object-fit: cover;"
+                autoplay
+                muted
+                playsinline>
+              </video>
+            </div>
+
+            <div class="mt-3">
+              <span
+                data-ai-roleplay-target="recordingIndicator"
+                class="badge bg-secondary">
+                ● 録画準備中
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+          <div
+            class="card-body d-flex flex-column justify-content-center align-items-center text-center">
+
+            <h2 class="h5 mb-4">
+              AI顧客
+            </h2>
+
+            <div
+              data-ai-roleplay-target="customerExpression"
+              class="mb-3"
+              style="font-size: 6rem;"
+              aria-hidden="true">
+              😐
+            </div>
+
+            <p class="fw-bold mb-2">
+              お客様
+            </p>
+
+            <p
+              data-ai-roleplay-target="status"
+              class="text-muted mb-0">
+              ロープレ開始前です
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body text-center py-4">
+
+        <p
+          data-ai-roleplay-target="turnMessage"
+          class="fs-4 fw-bold mb-4">
+          開始までお待ちください
+        </p>
+
+        <button
+          type="button"
+          data-ai-roleplay-target="stopTurnButton"
+          data-action="click->ai-roleplay#stopTurn"
+          class="btn btn-primary btn-lg me-2"
+          disabled>
+          話し終わる
+        </button>
+
+        <button
+          type="button"
+          data-ai-roleplay-target="endRoleplayButton"
+          data-action="click->ai-roleplay#endRoleplay"
+          class="btn btn-outline-danger btn-lg"
+          disabled>
+          ロープレを終了する
+        </button>
+
+      </div>
+    </div>
+  </div>
+</div>

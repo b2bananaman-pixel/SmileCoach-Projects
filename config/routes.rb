@@ -11,6 +11,10 @@ Rails.application.routes.draw do
 
   resources :practice_themes, only: [ :index, :show ] do
     post :create_practice, on: :member
+
+    get :ai_roleplay,
+        to: "ai_roleplays#show",
+        on: :member
   end
 
   post "ai_roleplays/synthesize", to: "ai_roleplays#synthesize"

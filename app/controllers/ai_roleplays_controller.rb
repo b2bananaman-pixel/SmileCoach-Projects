@@ -1,5 +1,9 @@
 class AiRoleplaysController < ApplicationController
   before_action :authenticate_user!
+  before_action :set_practice_theme, only: [ :show ]
+
+  def show
+  end
 
   def synthesize
     text = params.require(:text)
@@ -64,5 +68,11 @@ class AiRoleplaysController < ApplicationController
     render json: {
       error: "音声の文字起こしに失敗しました"
     }, status: :bad_gateway
+  end
+
+  private
+
+  def set_practice_theme
+    @practice_theme = PracticeTheme.find(params[:id])
   end
 end
