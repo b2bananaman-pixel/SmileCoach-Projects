@@ -2,10 +2,10 @@ class Internal::PracticeRetentionController < ActionController::API
   before_action :authenticate!
 
   def destroy
-    deleted_count = PracticeRetentionService.delete_expired
+    processed_count = PracticeRetentionService.delete_expired
 
     render json: {
-      message: "#{deleted_count}件の練習履歴を削除しました。"
+      message: "#{processed_count}件の期限切れデータを削除しました。"
     }
   end
 

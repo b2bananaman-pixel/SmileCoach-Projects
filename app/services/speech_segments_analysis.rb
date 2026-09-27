@@ -15,6 +15,8 @@ class SpeechSegmentsAnalysis
 
     silence_segments = detect_silence_segments
     build_speech_segments(silence_segments)
+  rescue ActiveStorage::FileNotFoundError
+    []
   end
 
   private
