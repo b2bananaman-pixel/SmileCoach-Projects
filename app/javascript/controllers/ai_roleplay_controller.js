@@ -3,11 +3,19 @@ import { Controller } from "@hotwired/stimulus"
 export default class extends Controller {
   static targets = [
     "status",
-    "startTurnButton",
     "stopTurnButton",
     "transcription",
     "aiReply",
-    "customerState"
+    "customerState",
+    "timer",
+    "preparation",
+    "countdown",
+    "countdownNumber",
+    "preview",
+    "recordingIndicator",
+    "customerExpression",
+    "turnMessage",
+    "endRoleplayButton"
   ]
 
   static values = {
@@ -17,73 +25,262 @@ export default class extends Controller {
   }
 
   connect() {
-    this.microphoneStream = null
+    this.mediaStream = null
+    this.roleplayRecorder = null
+    this.roleplayChunks = []
+
     this.turnRecorder = null
     this.turnChunks = []
 
-    this.setStatus("AIロープレ準備完了")
+    this.countdownTimer = null
+    this.roleplayTimer = null
+
+    this.remainingSeconds = 10 * 60
+    this.roleplayStarted = false
+    this.roleplayEnded = false
+
+    this.prepareRoleplay()
   }
 
   disconnect() {
-    this.stopMicrophone()
+    this.clearCountdownTimer()
+    this.clearRoleplayTimer()
+    this.stopMediaStream()
   }
 
-  async startTurn() {
+  async prepareRoleplay() {
     try {
-      this.startTurnButtonTarget.disabled = true
-      this.stopTurnButtonTarget.disabled = true
+      this.setStatus("カメラとマイクを準備しています...")
 
-      this.setStatus("マイクを準備しています...")
+      if (this.hasPreparationTarget) {
+        this.preparationTarget.textContent =
+          "カメラとマイクを準備しています..."
+      }
 
-      await this.ensureMicrophone()
+      this.mediaStream =
+        await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        })
 
-      this.turnChunks = []
+      if (this.hasPreviewTarget) {
+        this.previewTarget.srcObject =
+          this.mediaStream
 
-      const mimeType = this.supportedAudioMimeType()
+        await this.previewTarget.play()
+      }
 
-      const options = mimeType
-        ? { mimeType: mimeType }
-        : undefined
+      if (this.hasPreparationTarget) {
+        this.preparationTarget.textContent =
+          "カメラとマイクの準備ができました"
+      }
 
-      this.turnRecorder = new MediaRecorder(
-        this.microphoneStream,
-        options
-      )
+      this.setStatus("まもなくロープレを開始します")
 
-      this.turnRecorder.addEventListener(
-        "dataavailable",
-        (event) => {
-          if (event.data.size > 0) {
-            this.turnChunks.push(event.data)
-          }
-        }
-      )
-
-      this.turnRecorder.addEventListener(
-        "stop",
-        () => {
-          this.processTurn()
-        },
-        { once: true }
-      )
-
-      this.turnRecorder.start()
-
-      this.setStatus("店員として話してください")
-      this.stopTurnButtonTarget.disabled = false
+      await this.startCountdown()
     } catch (error) {
       console.error(error)
 
       this.setStatus(
-        `マイクの開始に失敗しました: ${error.message}`
+        "カメラまたはマイクを使用できません"
       )
 
-      this.startTurnButtonTarget.disabled = false
+      if (this.hasPreparationTarget) {
+        this.preparationTarget.classList.remove(
+          "alert-info"
+        )
+
+        this.preparationTarget.classList.add(
+          "alert-danger"
+        )
+
+        this.preparationTarget.textContent =
+          "カメラまたはマイクを使用できません。ブラウザの権限設定を確認してください。"
+      }
+
+      if (this.hasTurnMessageTarget) {
+        this.turnMessageTarget.textContent =
+          "ロープレを開始できません"
+      }
     }
+  }
+
+  startCountdown() {
+    return new Promise((resolve) => {
+      if (this.hasCountdownTarget) {
+        this.countdownTarget.classList.remove(
+          "d-none"
+        )
+      }
+
+      if (this.hasPreparationTarget) {
+        this.preparationTarget.classList.add(
+          "d-none"
+        )
+      }
+
+      let count = 3
+
+      this.updateCountdownNumber(count)
+
+      this.countdownTimer =
+        window.setInterval(() => {
+          count -= 1
+
+          if (count > 0) {
+            this.updateCountdownNumber(count)
+            return
+          }
+
+          this.clearCountdownTimer()
+
+          if (this.hasCountdownTarget) {
+            this.countdownTarget.classList.add(
+              "d-none"
+            )
+          }
+
+          this.startRoleplay()
+          resolve()
+        }, 1000)
+    })
+  }
+
+  updateCountdownNumber(number) {
+    if (this.hasCountdownNumberTarget) {
+      this.countdownNumberTarget.textContent =
+        number
+    }
+  }
+
+  startRoleplay() {
+    if (
+      this.roleplayStarted ||
+      this.roleplayEnded ||
+      !this.mediaStream
+    ) {
+      return
+    }
+
+    this.roleplayStarted = true
+
+    this.startContinuousRecording()
+    this.startRoleplayTimer()
+    this.startTurnRecording()
+
+    this.setStatus("あなたの番です")
+
+    if (this.hasTurnMessageTarget) {
+      this.turnMessageTarget.textContent =
+        "あなたの番です"
+    }
+
+    if (this.hasStopTurnButtonTarget) {
+      this.stopTurnButtonTarget.disabled = false
+    }
+
+    if (this.hasEndRoleplayButtonTarget) {
+      this.endRoleplayButtonTarget.disabled = false
+    }
+
+    if (this.hasRecordingIndicatorTarget) {
+      this.recordingIndicatorTarget.classList.remove(
+        "bg-secondary"
+      )
+
+      this.recordingIndicatorTarget.classList.add(
+        "bg-danger"
+      )
+
+      this.recordingIndicatorTarget.textContent =
+        "● 録画中"
+    }
+  }
+
+  startContinuousRecording() {
+    const mimeType =
+      this.supportedVideoMimeType()
+
+    const options = mimeType
+      ? { mimeType: mimeType }
+      : undefined
+
+    this.roleplayChunks = []
+
+    this.roleplayRecorder =
+      new MediaRecorder(
+        this.mediaStream,
+        options
+      )
+
+    this.roleplayRecorder.addEventListener(
+      "dataavailable",
+      (event) => {
+        if (event.data.size > 0) {
+          this.roleplayChunks.push(event.data)
+        }
+      }
+    )
+
+    this.roleplayRecorder.addEventListener(
+      "stop",
+      () => {
+        this.handleRoleplayRecordingStopped()
+      },
+      { once: true }
+    )
+
+    this.roleplayRecorder.start()
+  }
+
+  startTurnRecording() {
+    if (
+      !this.mediaStream ||
+      this.roleplayEnded
+    ) {
+      return
+    }
+
+    const audioTracks =
+      this.mediaStream.getAudioTracks()
+
+    if (audioTracks.length === 0) {
+      return
+    }
+
+    const audioStream =
+      new MediaStream(audioTracks)
+
+    const mimeType =
+      this.supportedAudioMimeType()
+
+    const options = mimeType
+      ? { mimeType: mimeType }
+      : undefined
+
+    this.turnChunks = []
+
+    this.turnRecorder =
+      new MediaRecorder(
+        audioStream,
+        options
+      )
+
+    this.turnRecorder.addEventListener(
+      "dataavailable",
+      (event) => {
+        if (event.data.size > 0) {
+          this.turnChunks.push(event.data)
+        }
+      }
+    )
+
+    this.turnRecorder.start()
   }
 
   stopTurn() {
     if (
+      this.roleplayEnded ||
       !this.turnRecorder ||
       this.turnRecorder.state !== "recording"
     ) {
@@ -91,104 +288,217 @@ export default class extends Controller {
     }
 
     this.stopTurnButtonTarget.disabled = true
-    this.setStatus("店員の発話を処理しています...")
+
+    this.setStatus(
+      "発話を受け付けました"
+    )
+
+    if (this.hasTurnMessageTarget) {
+      this.turnMessageTarget.textContent =
+        "発話を受け付けました"
+    }
+
+    this.turnRecorder.addEventListener(
+      "stop",
+      () => {
+        /*
+         * Issue 51では1ターン分の音声を確定するところまで。
+         *
+         * STT → AI返答 → TTS の複数ターン処理は
+         * 次のIssueで接続する。
+         */
+        this.setStatus(
+          "店員の発話を受け付けました"
+        )
+
+        if (this.hasTurnMessageTarget) {
+          this.turnMessageTarget.textContent =
+            "店員の発話を受け付けました"
+        }
+      },
+      { once: true }
+    )
 
     this.turnRecorder.stop()
   }
 
-  async processTurn() {
-    try {
-      const mimeType =
-        this.turnRecorder?.mimeType ||
-        this.supportedAudioMimeType() ||
-        "audio/webm"
+  startRoleplayTimer() {
+    this.remainingSeconds = 10 * 60
+    this.updateTimer()
 
-      const audioBlob = new Blob(
-        this.turnChunks,
-        {
-          type: mimeType
+    this.roleplayTimer =
+      window.setInterval(() => {
+        if (
+          this.roleplayEnded ||
+          this.remainingSeconds <= 0
+        ) {
+          this.clearRoleplayTimer()
+          return
         }
-      )
 
-      if (audioBlob.size === 0) {
-        throw new Error("録音データが空です")
-      }
+        this.remainingSeconds -= 1
+        this.updateTimer()
 
-      this.setStatus("音声を文字起こししています...")
-
-      const transcription =
-        await this.transcribe(audioBlob)
-
-      this.transcriptionTarget.textContent =
-        transcription
-
-      this.setStatus("AI顧客が返答を考えています...")
-
-      const aiResponse =
-        await this.createAiResponse(transcription)
-
-      this.aiReplyTarget.textContent =
-        aiResponse.reply
-
-      this.customerStateTarget.textContent =
-        aiResponse.customer_state
-
-      this.setStatus("AI顧客の音声を生成しています...")
-
-      const aiAudio =
-        await this.synthesize(aiResponse.reply)
-
-      this.setStatus("AI顧客が話しています...")
-
-      await this.playAudio(aiAudio)
-
-      if (aiResponse.conversation_end) {
-        this.setStatus(
-          aiResponse.end_reason ||
-          "会話が終了しました"
-        )
-
-        return
-      }
-
-      this.setStatus("次の店員発話を開始できます")
-      this.startTurnButtonTarget.disabled = false
-    } catch (error) {
-      console.error(error)
-
-      this.setStatus(
-        `AIロープレ処理に失敗しました: ${error.message}`
-      )
-
-      this.startTurnButtonTarget.disabled = false
-      this.stopTurnButtonTarget.disabled = true
-    }
+        if (this.remainingSeconds === 0) {
+          this.clearRoleplayTimer()
+        }
+      }, 1000)
   }
 
-  async ensureMicrophone() {
+  updateTimer() {
+    if (!this.hasTimerTarget) {
+      return
+    }
+
+    const minutes =
+      Math.floor(
+        this.remainingSeconds / 60
+      )
+
+    const seconds =
+      this.remainingSeconds % 60
+
+    this.timerTarget.textContent =
+      `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+  }
+
+  endRoleplay() {
     if (
-      this.microphoneStream &&
-      this.microphoneStream.active
+      !this.roleplayStarted ||
+      this.roleplayEnded
     ) {
       return
     }
 
-    this.microphoneStream =
-      await navigator.mediaDevices.getUserMedia({
-        audio: true
-      })
-  }
+    const confirmed =
+      window.confirm(
+        "ロープレを終了しますか？\n終了すると分析を開始します。"
+      )
 
-  stopMicrophone() {
-    if (!this.microphoneStream) {
+    if (!confirmed) {
       return
     }
 
-    this.microphoneStream
-      .getTracks()
-      .forEach((track) => track.stop())
+    this.finishRoleplay()
+  }
 
-    this.microphoneStream = null
+  finishRoleplay() {
+    if (this.roleplayEnded) {
+      return
+    }
+
+    this.roleplayEnded = true
+
+    this.clearCountdownTimer()
+    this.clearRoleplayTimer()
+
+    if (
+      this.turnRecorder &&
+      this.turnRecorder.state === "recording"
+    ) {
+      this.turnRecorder.stop()
+    }
+
+    if (
+      this.roleplayRecorder &&
+      this.roleplayRecorder.state === "recording"
+    ) {
+      this.roleplayRecorder.stop()
+    }
+
+    if (this.hasStopTurnButtonTarget) {
+      this.stopTurnButtonTarget.disabled = true
+    }
+
+    if (this.hasEndRoleplayButtonTarget) {
+      this.endRoleplayButtonTarget.disabled = true
+    }
+
+    if (this.hasRecordingIndicatorTarget) {
+      this.recordingIndicatorTarget.classList.remove(
+        "bg-danger"
+      )
+
+      this.recordingIndicatorTarget.classList.add(
+        "bg-secondary"
+      )
+
+      this.recordingIndicatorTarget.textContent =
+        "● 録画終了"
+    }
+
+    this.setStatus("ロープレを終了しました")
+
+    if (this.hasTurnMessageTarget) {
+      this.turnMessageTarget.textContent =
+        "ロープレを終了しました"
+    }
+  }
+
+  handleRoleplayRecordingStopped() {
+    /*
+     * Issue 51では連続録画の開始・停止までを実装する。
+     *
+     * 録画データの保存、AIロープレ内容分析、
+     * 基本接客分析への受け渡しは後続Issueで実装する。
+     */
+    this.stopMediaStream()
+  }
+
+  clearCountdownTimer() {
+    if (!this.countdownTimer) {
+      return
+    }
+
+    window.clearInterval(
+      this.countdownTimer
+    )
+
+    this.countdownTimer = null
+  }
+
+  clearRoleplayTimer() {
+    if (!this.roleplayTimer) {
+      return
+    }
+
+    window.clearInterval(
+      this.roleplayTimer
+    )
+
+    this.roleplayTimer = null
+  }
+
+  stopMediaStream() {
+    if (!this.mediaStream) {
+      return
+    }
+
+    this.mediaStream
+      .getTracks()
+      .forEach((track) => {
+        track.stop()
+      })
+
+    this.mediaStream = null
+
+    if (this.hasPreviewTarget) {
+      this.previewTarget.srcObject = null
+    }
+  }
+
+  supportedVideoMimeType() {
+    const candidates = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm"
+    ]
+
+    return candidates.find((mimeType) => {
+      return MediaRecorder.isTypeSupported(
+        mimeType
+      )
+    })
   }
 
   supportedAudioMimeType() {
@@ -198,7 +508,9 @@ export default class extends Controller {
     ]
 
     return candidates.find((mimeType) => {
-      return MediaRecorder.isTypeSupported(mimeType)
+      return MediaRecorder.isTypeSupported(
+        mimeType
+      )
     })
   }
 
@@ -220,7 +532,8 @@ export default class extends Controller {
       }
     )
 
-    const body = await this.parseJson(response)
+    const body =
+      await this.parseJson(response)
 
     if (!response.ok) {
       throw new Error(
@@ -255,7 +568,8 @@ export default class extends Controller {
       }
     )
 
-    const body = await this.parseJson(response)
+    const body =
+      await this.parseJson(response)
 
     if (!response.ok) {
       throw new Error(
@@ -295,14 +609,17 @@ export default class extends Controller {
         "AI顧客の音声生成に失敗しました"
 
       try {
-        const body = await response.json()
+        const body =
+          await response.json()
 
         if (body.error) {
           message = body.error
         }
       } catch (_error) {
-        // JSONではないエラーレスポンスの場合は
-        // デフォルトメッセージを使用する
+        /*
+         * JSONではないエラーレスポンスの場合は
+         * デフォルトメッセージを使用する。
+         */
       }
 
       throw new Error(message)
@@ -321,81 +638,75 @@ export default class extends Controller {
       return
     }
 
-    /*
-     * 通常のAIロープレ単体利用時。
-     *
-     * video-background側で録画していない場合は、
-     * 従来どおりAudio要素で再生する。
-     */
     const audioUrl =
       URL.createObjectURL(audioBlob)
 
-    const audio = new Audio(audioUrl)
+    const audio =
+      new Audio(audioUrl)
 
     try {
       await audio.play()
 
-      await new Promise((resolve, reject) => {
-        audio.addEventListener(
-          "ended",
-          resolve,
-          { once: true }
-        )
+      await new Promise(
+        (resolve, reject) => {
+          audio.addEventListener(
+            "ended",
+            resolve,
+            { once: true }
+          )
 
-        audio.addEventListener(
-          "error",
-          () => {
-            reject(
-              new Error(
-                "AI顧客の音声再生に失敗しました"
+          audio.addEventListener(
+            "error",
+            () => {
+              reject(
+                new Error(
+                  "AI顧客の音声再生に失敗しました"
+                )
               )
-            )
-          },
-          { once: true }
-        )
-      })
+            },
+            { once: true }
+          )
+        }
+      )
     } finally {
       URL.revokeObjectURL(audioUrl)
     }
   }
 
   async playAudioThroughMixer(audioBlob) {
-    return new Promise((resolve, reject) => {
-      let handled = false
+    return new Promise(
+      (resolve, reject) => {
+        let handled = false
 
-      const event =
-        new CustomEvent(
-          "ai-roleplay:play-audio",
-          {
-            detail: {
-              audioBlob: audioBlob,
+        const event =
+          new CustomEvent(
+            "ai-roleplay:play-audio",
+            {
+              detail: {
+                audioBlob: audioBlob,
 
-              markHandled: () => {
-                handled = true
-              },
+                markHandled: () => {
+                  handled = true
+                },
 
-              resolve: () => {
-                resolve(true)
-              },
+                resolve: () => {
+                  resolve(true)
+                },
 
-              reject: (error) => {
-                reject(error)
+                reject: (error) => {
+                  reject(error)
+                }
               }
             }
-          }
-        )
+          )
 
-      window.dispatchEvent(event)
+        window.dispatchEvent(event)
 
-      /*
-       * video-background側で録画用Mixerが
-       * 起動していなければイベントは処理されない。
-       * その場合は通常のAudio再生へフォールバックする。
-       */
-      if (!handled) {
-        resolve(false)
+        if (!handled) {
+          resolve(false)
+        }
       }
-    })
+    )
   }
 
   async parseJson(response) {
@@ -408,11 +719,12 @@ export default class extends Controller {
     }
   }
 
-
   csrfHeaders() {
     const token =
       document
-        .querySelector('meta[name="csrf-token"]')
+        .querySelector(
+          'meta[name="csrf-token"]'
+        )
         ?.getAttribute("content")
 
     if (!token) {
@@ -426,7 +738,8 @@ export default class extends Controller {
 
   setStatus(message) {
     if (this.hasStatusTarget) {
-      this.statusTarget.textContent = message
+      this.statusTarget.textContent =
+        message
     }
   }
 }

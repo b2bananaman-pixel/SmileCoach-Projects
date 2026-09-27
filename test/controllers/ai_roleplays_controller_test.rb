@@ -5,6 +5,94 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     @user = users(:one)
   end
 
+  test "ログインユーザーがAIロープレ画面を表示できる" do
+    sign_in @user
+
+    practice_theme = practice_themes(:one)
+
+    get ai_roleplay_practice_theme_path(practice_theme)
+
+    assert_response :success
+    assert_select "h1", text: "AIロープレ"
+    assert_includes response.body, practice_theme.name
+  end
+
+  test "AIロープレ画面に指定した練習テーマが表示される" do
+    sign_in @user
+
+    practice_theme = practice_themes(:one)
+
+    get ai_roleplay_practice_theme_path(practice_theme)
+
+    assert_response :success
+    assert_select(
+      "p",
+      text: /#{Regexp.escape(practice_theme.name)}/
+    )
+  end
+
+  test "AIロープレ画面にロープレ開始用UIが表示される" do
+    sign_in @user
+
+    practice_theme = practice_themes(:one)
+
+    get ai_roleplay_practice_theme_path(practice_theme)
+
+    assert_response :success
+
+    assert_select(
+      '[data-controller="ai-roleplay"]',
+      count: 1
+    )
+
+    assert_select(
+      '[data-ai-roleplay-target="timer"]',
+      text: "10:00",
+      count: 1
+    )
+
+    assert_select(
+      'video[data-ai-roleplay-target="preview"]',
+      count: 1
+    )
+
+    assert_select(
+      '[data-ai-roleplay-target="recordingIndicator"]',
+      text: /録画準備中/,
+      count: 1
+    )
+
+    assert_select "h2", text: "AI顧客"
+
+    assert_select(
+      'button[data-ai-roleplay-target="stopTurnButton"]',
+      text: "話し終わる",
+      count: 1
+    )
+
+    assert_select(
+      'button[data-ai-roleplay-target="endRoleplayButton"]',
+      text: "ロープレを終了する",
+      count: 1
+    )
+  end
+
+  test "AIロープレ画面は未ログインの場合ログイン画面へリダイレクトされる" do
+    practice_theme = practice_themes(:one)
+
+    get ai_roleplay_practice_theme_path(practice_theme)
+
+    assert_redirected_to new_user_session_path
+  end
+
+  test "存在しない練習テーマのAIロープレ画面は404を返す" do
+    sign_in @user
+
+    get ai_roleplay_practice_theme_path(id: 999_999)
+
+    assert_response :not_found
+  end
+
   test "ログインユーザーがAI音声を生成できる" do
     sign_in @user
 
