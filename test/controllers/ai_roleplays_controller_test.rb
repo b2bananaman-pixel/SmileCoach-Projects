@@ -192,11 +192,12 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
 
     AiRoleplayResponseService.stub(
       :new,
-      ->(clerk_message:) {
+      ->(clerk_message:, conversation_history:) {
         assert_equal(
           "今日はスマートフォンのお乗り換えをご検討ですか？",
           clerk_message
         )
+        assert_equal [], conversation_history
 
         roleplay_service
       }
@@ -222,6 +223,114 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     assert_nil body["end_reason"]
 
     roleplay_service.verify
+  end
+
+  test "会話履歴をAI顧客返答サービスへ渡せる" do
+    sign_in @user
+
+    conversation_history = [
+      {
+        role: "user",
+        content: "現在の料金は高いと感じていますか？"
+      },
+      {
+        role: "assistant",
+        content: "はい、最近少し高いと感じています。"
+      }
+    ]
+
+    ai_response = {
+      "reply" => "4人で使っています。",
+      "customer_state" => "neutral",
+      "contract_intent" => "considering",
+      "reason" => "家族構成について回答した",
+      "conversation_end" => false,
+      "end_reason" => nil
+    }
+
+    roleplay_service = Minitest::Mock.new
+    roleplay_service.expect(
+      :call,
+      ai_response
+    )
+
+    AiRoleplayResponseService.stub(
+      :new,
+      ->(clerk_message:, conversation_history:) {
+        assert_equal(
+          "ご家族は何人で利用されていますか？",
+          clerk_message
+        )
+
+        assert_equal(
+          [
+            {
+              "role" => "user",
+              "content" => "現在の料金は高いと感じていますか？"
+            },
+            {
+              "role" => "assistant",
+              "content" => "はい、最近少し高いと感じています。"
+            }
+          ],
+          conversation_history
+        )
+
+        roleplay_service
+      }
+    ) do
+      post ai_roleplays_respond_path,
+           params: {
+             clerk_message: "ご家族は何人で利用されていますか？",
+             conversation_history: conversation_history.to_json
+           }
+    end
+
+    assert_response :success
+    assert_equal(
+      "4人で使っています。",
+      response.parsed_body["reply"]
+    )
+
+    roleplay_service.verify
+  end
+
+  test "会話履歴が不正なJSONの場合は422を返す" do
+    sign_in @user
+
+    post ai_roleplays_respond_path,
+         params: {
+           clerk_message: "こんにちは。",
+           conversation_history: "{invalid-json"
+         }
+
+    assert_response :unprocessable_entity
+    assert_equal(
+      { "error" => "会話履歴の形式が不正です" },
+      response.parsed_body
+    )
+  end
+
+  test "会話履歴が配列ではない場合は422を返す" do
+    sign_in @user
+
+    post ai_roleplays_respond_path,
+         params: {
+           clerk_message: "こんにちは。",
+           conversation_history: {
+             role: "user",
+             content: "こんにちは。"
+           }.to_json
+         }
+
+    assert_response :unprocessable_entity
+    assert_equal(
+      {
+        "error" =>
+          "conversation_history must be an array"
+      },
+      response.parsed_body
+    )
   end
 
   test "1ターン返答でclerk_messageがない場合は422を返す" do
@@ -257,8 +366,10 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
 
     AiRoleplayResponseService.stub(
       :new,
-      ->(clerk_message:) {
+      ->(clerk_message:, conversation_history:) {
         assert_equal "こんにちは。", clerk_message
+        assert_equal [], conversation_history
+
         roleplay_service
       }
     ) do

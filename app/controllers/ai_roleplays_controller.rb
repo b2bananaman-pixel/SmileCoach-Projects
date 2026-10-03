@@ -30,14 +30,24 @@ class AiRoleplaysController < ApplicationController
 
   def respond
     clerk_message = params.require(:clerk_message)
+    conversation_history = parsed_conversation_history
 
     ai_response = AiRoleplayResponseService.new(
-      clerk_message: clerk_message
+      clerk_message: clerk_message,
+      conversation_history: conversation_history
     ).call
 
     render json: ai_response
   rescue ActionController::ParameterMissing, ArgumentError => e
     render json: { error: e.message }, status: :unprocessable_entity
+  rescue JSON::ParserError => e
+    Rails.logger.warn(
+      "[AiRoleplaysController#respond] Invalid conversation history: #{e.message}"
+    )
+
+    render json: {
+      error: "会話履歴の形式が不正です"
+    }, status: :unprocessable_entity
   rescue StandardError => e
     Rails.logger.error(
       "[AiRoleplaysController#respond] #{e.class}: #{e.message}"
@@ -74,5 +84,27 @@ class AiRoleplaysController < ApplicationController
 
   def set_practice_theme
     @practice_theme = PracticeTheme.find(params[:id])
+  end
+
+  def parsed_conversation_history
+    raw_history = params[:conversation_history]
+
+    return [] if raw_history.blank?
+
+    history =
+      case raw_history
+      when String
+        JSON.parse(raw_history)
+      when Array
+        raw_history
+      else
+        raise ArgumentError, "conversation_history is invalid"
+      end
+
+    unless history.is_a?(Array)
+      raise ArgumentError, "conversation_history must be an array"
+    end
+
+    history
   end
 end
