@@ -6,8 +6,13 @@ class AiRoleplayResponseService
   API_URL = "https://api.groq.com/openai/v1/chat/completions"
   MODEL = "openai/gpt-oss-20b"
 
-  def initialize(clerk_message:, http_client: Net::HTTP)
+  def initialize(
+    clerk_message:,
+    conversation_history: [],
+    http_client: Net::HTTP
+  )
     @clerk_message = clerk_message
+    @conversation_history = conversation_history
     @http_client = http_client
   end
 
@@ -24,16 +29,7 @@ class AiRoleplayResponseService
 
     request.body = {
       model: MODEL,
-      messages: [
-        {
-          role: "system",
-          content: system_prompt
-        },
-        {
-          role: "user",
-          content: user_prompt
-        }
-      ]
+      messages: messages
     }.to_json
 
     response = @http_client.start(
@@ -63,6 +59,50 @@ class AiRoleplayResponseService
 
   private
 
+  def messages
+    [
+      {
+        role: "system",
+        content: system_prompt
+      },
+      *conversation_messages,
+      {
+        role: "user",
+        content: user_prompt
+      }
+    ]
+  end
+
+  def conversation_messages
+    return [] unless @conversation_history.is_a?(Array)
+
+    @conversation_history.filter_map do |message|
+      normalized_message(message)
+    end
+  end
+
+  def normalized_message(message)
+    return unless message.respond_to?(:to_h)
+
+    message = message.to_h
+
+    role =
+      message["role"] ||
+      message[:role]
+
+    content =
+      message["content"] ||
+      message[:content]
+
+    return unless %w[user assistant].include?(role.to_s)
+    return if content.blank?
+
+    {
+      role: role.to_s,
+      content: content.to_s
+    }
+  end
+
   def system_prompt
     <<~PROMPT
       あなたは接客ロールプレイの顧客役です。
@@ -70,6 +110,9 @@ class AiRoleplayResponseService
 
       今回は携帯電話ショップで料金プランや乗り換えを検討している顧客を演じてください。
       一度の返答は長くなりすぎないよう、会話として自然な1〜2文程度にしてください。
+
+      これまでの会話履歴がある場合は、その内容と矛盾しないように会話を続けてください。
+      以前に話した家族構成、利用状況、希望、懸念などを必要に応じて引き継いでください。
 
       必ず以下の6項目を持つJSONオブジェクトだけを返してください。
       Markdownやコードブロック、JSON以外の説明文は含めないでください。
@@ -111,6 +154,7 @@ class AiRoleplayResponseService
 
       #{@clerk_message}
 
+      これまでの会話内容を踏まえて、
       顧客役として自然に返答し、指定されたJSON形式だけを返してください。
     PROMPT
   end

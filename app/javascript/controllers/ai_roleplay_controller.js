@@ -39,10 +39,15 @@ export default class extends Controller {
     this.roleplayStarted = false
     this.roleplayEnded = false
 
+    this.turnProcessing = false
+    this.conversationHistory = []
+
     this.prepareRoleplay()
   }
 
   disconnect() {
+    this.roleplayEnded = true
+
     this.clearCountdownTimer()
     this.clearRoleplayTimer()
     this.stopMediaStream()
@@ -50,7 +55,9 @@ export default class extends Controller {
 
   async prepareRoleplay() {
     try {
-      this.setStatus("カメラとマイクを準備しています...")
+      this.setStatus(
+        "カメラとマイクを準備しています..."
+      )
 
       if (this.hasPreparationTarget) {
         this.preparationTarget.textContent =
@@ -75,7 +82,9 @@ export default class extends Controller {
           "カメラとマイクの準備ができました"
       }
 
-      this.setStatus("まもなくロープレを開始します")
+      this.setStatus(
+        "まもなくロープレを開始します"
+      )
 
       await this.startCountdown()
     } catch (error) {
@@ -168,19 +177,11 @@ export default class extends Controller {
     this.startRoleplayTimer()
     this.startTurnRecording()
 
-    this.setStatus("あなたの番です")
-
-    if (this.hasTurnMessageTarget) {
-      this.turnMessageTarget.textContent =
-        "あなたの番です"
-    }
-
-    if (this.hasStopTurnButtonTarget) {
-      this.stopTurnButtonTarget.disabled = false
-    }
+    this.setClerkTurnState()
 
     if (this.hasEndRoleplayButtonTarget) {
-      this.endRoleplayButtonTarget.disabled = false
+      this.endRoleplayButtonTarget.disabled =
+        false
     }
 
     if (this.hasRecordingIndicatorTarget) {
@@ -217,7 +218,9 @@ export default class extends Controller {
       "dataavailable",
       (event) => {
         if (event.data.size > 0) {
-          this.roleplayChunks.push(event.data)
+          this.roleplayChunks.push(
+            event.data
+          )
         }
       }
     )
@@ -236,7 +239,15 @@ export default class extends Controller {
   startTurnRecording() {
     if (
       !this.mediaStream ||
-      this.roleplayEnded
+      this.roleplayEnded ||
+      this.turnProcessing
+    ) {
+      return
+    }
+
+    if (
+      this.turnRecorder &&
+      this.turnRecorder.state === "recording"
     ) {
       return
     }
@@ -270,7 +281,9 @@ export default class extends Controller {
       "dataavailable",
       (event) => {
         if (event.data.size > 0) {
-          this.turnChunks.push(event.data)
+          this.turnChunks.push(
+            event.data
+          )
         }
       }
     )
@@ -281,13 +294,19 @@ export default class extends Controller {
   stopTurn() {
     if (
       this.roleplayEnded ||
+      this.turnProcessing ||
       !this.turnRecorder ||
       this.turnRecorder.state !== "recording"
     ) {
       return
     }
 
-    this.stopTurnButtonTarget.disabled = true
+    this.turnProcessing = true
+
+    if (this.hasStopTurnButtonTarget) {
+      this.stopTurnButtonTarget.disabled =
+        true
+    }
 
     this.setStatus(
       "発話を受け付けました"
@@ -298,28 +317,241 @@ export default class extends Controller {
         "発話を受け付けました"
     }
 
-    this.turnRecorder.addEventListener(
+    const recorder =
+      this.turnRecorder
+
+    recorder.addEventListener(
       "stop",
       () => {
-        /*
-         * Issue 51では1ターン分の音声を確定するところまで。
-         *
-         * STT → AI返答 → TTS の複数ターン処理は
-         * 次のIssueで接続する。
-         */
-        this.setStatus(
-          "店員の発話を受け付けました"
-        )
-
-        if (this.hasTurnMessageTarget) {
-          this.turnMessageTarget.textContent =
-            "店員の発話を受け付けました"
-        }
+        this.processTurn(recorder)
       },
       { once: true }
     )
 
-    this.turnRecorder.stop()
+    recorder.stop()
+  }
+
+  async processTurn(recorder) {
+    try {
+      if (this.roleplayEnded) {
+        return
+      }
+
+      const mimeType =
+        recorder?.mimeType ||
+        this.supportedAudioMimeType() ||
+        "audio/webm"
+
+      const audioBlob =
+        new Blob(
+          this.turnChunks,
+          { type: mimeType }
+        )
+
+      if (audioBlob.size === 0) {
+        throw new Error(
+          "録音データが空です"
+        )
+      }
+
+      this.setStatus(
+        "音声を文字起こししています..."
+      )
+
+      if (this.hasTurnMessageTarget) {
+        this.turnMessageTarget.textContent =
+          "店員の発話を確認しています..."
+      }
+
+      const transcription =
+        await this.transcribe(audioBlob)
+
+      if (this.roleplayEnded) {
+        return
+      }
+
+      if (this.hasTranscriptionTarget) {
+        this.transcriptionTarget.textContent =
+          transcription
+      }
+
+      this.setStatus(
+        "AI顧客が返答を考えています..."
+      )
+
+      if (this.hasTurnMessageTarget) {
+        this.turnMessageTarget.textContent =
+          "AI顧客が返答を考えています..."
+      }
+
+      const aiResponse =
+        await this.createAiResponse(
+          transcription
+        )
+
+      if (this.roleplayEnded) {
+        return
+      }
+
+      if (this.hasAiReplyTarget) {
+        this.aiReplyTarget.textContent =
+          aiResponse.reply
+      }
+
+      if (this.hasCustomerStateTarget) {
+        this.customerStateTarget.textContent =
+          aiResponse.customer_state || "-"
+      }
+
+      this.updateCustomerExpression(
+        aiResponse.customer_state
+      )
+
+      this.addConversationTurn(
+        transcription,
+        aiResponse.reply
+      )
+
+      this.setStatus(
+        "AI顧客の音声を生成しています..."
+      )
+
+      if (this.hasTurnMessageTarget) {
+        this.turnMessageTarget.textContent =
+          "AI顧客が返答します"
+      }
+
+      const aiAudio =
+        await this.synthesize(
+          aiResponse.reply
+        )
+
+      if (this.roleplayEnded) {
+        return
+      }
+
+      this.setStatus(
+        "AI顧客が話しています..."
+      )
+
+      if (this.hasTurnMessageTarget) {
+        this.turnMessageTarget.textContent =
+          "AI顧客が話しています..."
+      }
+
+      await this.playAudio(aiAudio)
+
+      if (this.roleplayEnded) {
+        return
+      }
+
+      if (aiResponse.conversation_end) {
+        this.finishConversation(
+          aiResponse.end_reason
+        )
+        return
+      }
+
+      this.turnProcessing = false
+
+      this.startTurnRecording()
+      this.setClerkTurnState()
+    } catch (error) {
+      console.error(error)
+
+      if (this.roleplayEnded) {
+        return
+      }
+
+      this.turnProcessing = false
+
+      this.setStatus(
+        `AIロープレ処理に失敗しました: ${error.message}`
+      )
+
+      if (this.hasTurnMessageTarget) {
+        this.turnMessageTarget.textContent =
+          "処理に失敗しました。もう一度話してください。"
+      }
+
+      this.startTurnRecording()
+
+      if (this.hasStopTurnButtonTarget) {
+        this.stopTurnButtonTarget.disabled =
+          false
+      }
+    }
+  }
+
+  addConversationTurn(
+    clerkMessage,
+    aiReply
+  ) {
+    this.conversationHistory.push(
+      {
+        role: "user",
+        content: clerkMessage
+      },
+      {
+        role: "assistant",
+        content: aiReply
+      }
+    )
+  }
+
+  setClerkTurnState() {
+    if (this.roleplayEnded) {
+      return
+    }
+
+    this.setStatus("あなたの番です")
+
+    if (this.hasTurnMessageTarget) {
+      this.turnMessageTarget.textContent =
+        "あなたの番です"
+    }
+
+    if (this.hasStopTurnButtonTarget) {
+      this.stopTurnButtonTarget.disabled =
+        false
+    }
+  }
+
+  updateCustomerExpression(
+    customerState
+  ) {
+    if (!this.hasCustomerExpressionTarget) {
+      return
+    }
+
+    const labels = {
+      neutral: "😐",
+      interested: "🙂",
+      concerned: "😟",
+      satisfied: "😊"
+    }
+
+    this.customerExpressionTarget.textContent =
+      labels[customerState] || "😐"
+  }
+
+  finishConversation(endReason) {
+    if (this.roleplayEnded) {
+      return
+    }
+
+    this.turnProcessing = false
+
+    this.setStatus(
+      endReason || "会話が終了しました"
+    )
+
+    if (this.hasTurnMessageTarget) {
+      this.turnMessageTarget.textContent =
+        endReason || "会話が終了しました"
+    }
+
+    this.finishRoleplay()
   }
 
   startRoleplayTimer() {
@@ -341,6 +573,7 @@ export default class extends Controller {
 
         if (this.remainingSeconds === 0) {
           this.clearRoleplayTimer()
+          this.finishRoleplay()
         }
       }, 1000)
   }
@@ -388,6 +621,7 @@ export default class extends Controller {
     }
 
     this.roleplayEnded = true
+    this.turnProcessing = false
 
     this.clearCountdownTimer()
     this.clearRoleplayTimer()
@@ -407,11 +641,13 @@ export default class extends Controller {
     }
 
     if (this.hasStopTurnButtonTarget) {
-      this.stopTurnButtonTarget.disabled = true
+      this.stopTurnButtonTarget.disabled =
+        true
     }
 
     if (this.hasEndRoleplayButtonTarget) {
-      this.endRoleplayButtonTarget.disabled = true
+      this.endRoleplayButtonTarget.disabled =
+        true
     }
 
     if (this.hasRecordingIndicatorTarget) {
@@ -427,7 +663,9 @@ export default class extends Controller {
         "● 録画終了"
     }
 
-    this.setStatus("ロープレを終了しました")
+    this.setStatus(
+      "ロープレを終了しました"
+    )
 
     if (this.hasTurnMessageTarget) {
       this.turnMessageTarget.textContent =
@@ -437,8 +675,6 @@ export default class extends Controller {
 
   handleRoleplayRecordingStopped() {
     /*
-     * Issue 51では連続録画の開始・停止までを実装する。
-     *
      * 録画データの保存、AIロープレ内容分析、
      * 基本接客分析への受け渡しは後続Issueで実装する。
      */
@@ -523,14 +759,15 @@ export default class extends Controller {
       "ai_roleplay_turn.webm"
     )
 
-    const response = await fetch(
-      this.transcribeUrlValue,
-      {
-        method: "POST",
-        headers: this.csrfHeaders(),
-        body: formData
-      }
-    )
+    const response =
+      await fetch(
+        this.transcribeUrlValue,
+        {
+          method: "POST",
+          headers: this.csrfHeaders(),
+          body: formData
+        }
+      )
 
     const body =
       await this.parseJson(response)
@@ -551,7 +788,9 @@ export default class extends Controller {
     return body.transcription
   }
 
-  async createAiResponse(clerkMessage) {
+  async createAiResponse(
+    clerkMessage
+  ) {
     const formData = new FormData()
 
     formData.append(
@@ -559,14 +798,22 @@ export default class extends Controller {
       clerkMessage
     )
 
-    const response = await fetch(
-      this.respondUrlValue,
-      {
-        method: "POST",
-        headers: this.csrfHeaders(),
-        body: formData
-      }
+    formData.append(
+      "conversation_history",
+      JSON.stringify(
+        this.conversationHistory
+      )
     )
+
+    const response =
+      await fetch(
+        this.respondUrlValue,
+        {
+          method: "POST",
+          headers: this.csrfHeaders(),
+          body: formData
+        }
+      )
 
     const body =
       await this.parseJson(response)
@@ -595,14 +842,15 @@ export default class extends Controller {
       text
     )
 
-    const response = await fetch(
-      this.synthesizeUrlValue,
-      {
-        method: "POST",
-        headers: this.csrfHeaders(),
-        body: formData
-      }
-    )
+    const response =
+      await fetch(
+        this.synthesizeUrlValue,
+        {
+          method: "POST",
+          headers: this.csrfHeaders(),
+          body: formData
+        }
+      )
 
     if (!response.ok) {
       let message =
@@ -669,11 +917,15 @@ export default class extends Controller {
         }
       )
     } finally {
-      URL.revokeObjectURL(audioUrl)
+      URL.revokeObjectURL(
+        audioUrl
+      )
     }
   }
 
-  async playAudioThroughMixer(audioBlob) {
+  async playAudioThroughMixer(
+    audioBlob
+  ) {
     return new Promise(
       (resolve, reject) => {
         let handled = false
