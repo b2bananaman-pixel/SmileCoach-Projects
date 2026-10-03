@@ -140,4 +140,83 @@ class PracticeRetentionServiceTest < ActiveSupport::TestCase
     assert_nil practice.transcription
     assert_not practice.audio.attached?
   end
+
+  test "環境変数で保持期間を12日に変更できる" do
+    with_retention_days("12") do
+      practice = Practice.create!(
+        user: users(:one),
+        practice_theme: practice_themes(:one),
+        transcription: "12日設定で削除する文字起こしです",
+        created_at: 13.days.ago
+      )
+
+      processed_count = PracticeRetentionService.delete_expired
+
+      assert_nil practice.reload.transcription
+      assert_equal 1, processed_count
+    end
+  end
+
+  test "環境変数が整数でない場合は14日にフォールバックする" do
+    with_retention_days("abc") do
+      practice = Practice.create!(
+        user: users(:one),
+        practice_theme: practice_themes(:one),
+        transcription: "まだ保持する文字起こしです",
+        created_at: 13.days.ago
+      )
+
+      processed_count = PracticeRetentionService.delete_expired
+
+      assert_equal "まだ保持する文字起こしです", practice.reload.transcription
+      assert_equal 0, processed_count
+    end
+  end
+
+  test "環境変数が0の場合は14日にフォールバックする" do
+    with_retention_days("0") do
+      practice = Practice.create!(
+        user: users(:one),
+        practice_theme: practice_themes(:one),
+        transcription: "まだ保持する文字起こしです",
+        created_at: 13.days.ago
+      )
+
+      processed_count = PracticeRetentionService.delete_expired
+
+      assert_equal "まだ保持する文字起こしです", practice.reload.transcription
+      assert_equal 0, processed_count
+    end
+  end
+
+  test "環境変数が負数の場合は14日にフォールバックする" do
+    with_retention_days("-1") do
+      practice = Practice.create!(
+        user: users(:one),
+        practice_theme: practice_themes(:one),
+        transcription: "まだ保持する文字起こしです",
+        created_at: 13.days.ago
+      )
+
+      processed_count = PracticeRetentionService.delete_expired
+
+      assert_equal "まだ保持する文字起こしです", practice.reload.transcription
+      assert_equal 0, processed_count
+    end
+  end
+
+  private
+
+  def with_retention_days(value)
+    original_value = ENV["PRACTICE_RETENTION_DAYS"]
+    ENV["PRACTICE_RETENTION_DAYS"] = value
+
+    yield
+  ensure
+    if original_value.nil?
+      ENV.delete("PRACTICE_RETENTION_DAYS")
+    else
+      ENV["PRACTICE_RETENTION_DAYS"] = original_value
+    end
+  end
 end
