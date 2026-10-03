@@ -1,5 +1,7 @@
 class PracticeRetentionService
-  RETENTION_PERIOD = 14.days
+  # 本番環境で保持期間の動作を確認するため、一時的に12日に設定する。
+  # 検証完了後は必ず14.daysへ戻す。
+  RETENTION_PERIOD = 12.days
 
   def self.delete_expired
     cutoff_time = RETENTION_PERIOD.ago
