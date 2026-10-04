@@ -398,12 +398,7 @@ export default class extends Controller {
           aiResponse.reply
       }
 
-      if (this.hasCustomerStateTarget) {
-        this.customerStateTarget.textContent =
-          aiResponse.customer_state || "-"
-      }
-
-      this.updateCustomerExpression(
+      this.updateCustomerState(
         aiResponse.customer_state
       )
 
@@ -517,22 +512,57 @@ export default class extends Controller {
     }
   }
 
-  updateCustomerExpression(
+  updateCustomerState(
     customerState
   ) {
-    if (!this.hasCustomerExpressionTarget) {
-      return
+    const states = {
+      neutral: {
+        expression: "🙂",
+        label: "通常"
+      },
+      interested: {
+        expression: "😊",
+        label: "興味を持った"
+      },
+      convinced: {
+        expression: "😄",
+        label: "納得した"
+      },
+      confused: {
+        expression: "🤔",
+        label: "理解できていない"
+      },
+      troubled: {
+        expression: "😕",
+        label: "困っている"
+      },
+      dissatisfied: {
+        expression: "😟",
+        label: "不満"
+      },
+      surprised: {
+        expression: "😮",
+        label: "驚いた"
+      },
+      purchased: {
+        expression: "😃",
+        label: "購入を決定した"
+      }
     }
 
-    const labels = {
-      neutral: "😐",
-      interested: "🙂",
-      concerned: "😟",
-      satisfied: "😊"
+    const state =
+      states[customerState] ||
+      states.neutral
+
+    if (this.hasCustomerExpressionTarget) {
+      this.customerExpressionTarget.textContent =
+        state.expression
     }
 
-    this.customerExpressionTarget.textContent =
-      labels[customerState] || "😐"
+    if (this.hasCustomerStateTarget) {
+      this.customerStateTarget.textContent =
+        state.label
+    }
   }
 
   finishConversation(endReason) {

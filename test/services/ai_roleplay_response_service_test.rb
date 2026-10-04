@@ -280,6 +280,156 @@ class AiRoleplayResponseServiceTest < ActiveSupport::TestCase
     http_client.verify
   end
 
+  test "8種類の顧客状態がシステムプロンプトに含まれる" do
+    response = successful_response(
+      reply: "もう少し詳しく教えてください。"
+    )
+
+    http_client = Minitest::Mock.new
+
+    http_client.expect(
+      :start,
+      response
+    ) do |_host, _port, use_ssl:, &block|
+      assert_equal true, use_ssl
+
+      http = Minitest::Mock.new
+
+      http.expect(:request, response) do |request|
+        body = JSON.parse(request.body)
+        system_prompt = body["messages"][0]["content"]
+
+        AiRoleplayResponseService::CUSTOMER_STATES.each do |state|
+          assert_includes system_prompt, state
+        end
+      end
+
+      block.call(http)
+      http.verify
+
+      true
+    end
+
+    service = AiRoleplayResponseService.new(
+      clerk_message: "こちらのプランはいかがでしょうか？",
+      http_client: http_client
+    )
+
+    service.call
+
+    response.verify
+    http_client.verify
+  end
+
+  test "指定された8種類の顧客状態はそのまま返す" do
+    AiRoleplayResponseService::CUSTOMER_STATES.each do |state|
+      response = successful_response(
+        reply: "テスト用の返答です。",
+        customer_state: state
+      )
+
+      http_client = Minitest::Mock.new
+
+      http_client.expect(
+        :start,
+        response,
+        [ String, Integer ],
+        use_ssl: true
+      )
+
+      service = AiRoleplayResponseService.new(
+        clerk_message: "テスト用の店員発話です。",
+        http_client: http_client
+      )
+
+      result = service.call
+
+      assert_equal state, result["customer_state"]
+
+      response.verify
+      http_client.verify
+    end
+  end
+
+  test "想定外の顧客状態はneutralへフォールバックする" do
+    response = successful_response(
+      reply: "テスト用の返答です。",
+      customer_state: "happy"
+    )
+
+    http_client = Minitest::Mock.new
+
+    http_client.expect(
+      :start,
+      response,
+      [ String, Integer ],
+      use_ssl: true
+    )
+
+    service = AiRoleplayResponseService.new(
+      clerk_message: "テスト用の店員発話です。",
+      http_client: http_client
+    )
+
+    result = service.call
+
+    assert_equal "neutral", result["customer_state"]
+
+    response.verify
+    http_client.verify
+  end
+
+  test "purchasedの購入決定ルールがシステムプロンプトに含まれる" do
+    response = successful_response(
+      reply: "それでお願いします。",
+      customer_state: "purchased",
+      contract_intent: "positive",
+      conversation_end: true,
+      end_reason: "contract"
+    )
+
+    http_client = Minitest::Mock.new
+
+    http_client.expect(
+      :start,
+      response
+    ) do |_host, _port, use_ssl:, &block|
+      assert_equal true, use_ssl
+
+      http = Minitest::Mock.new
+
+      http.expect(:request, response) do |request|
+        body = JSON.parse(request.body)
+        system_prompt = body["messages"][0]["content"]
+
+        assert_includes system_prompt, "purchased"
+        assert_includes system_prompt, "contract_intentをpositive"
+        assert_includes system_prompt, "conversation_endをtrue"
+        assert_includes system_prompt, "end_reasonをcontract"
+      end
+
+      block.call(http)
+      http.verify
+
+      true
+    end
+
+    service = AiRoleplayResponseService.new(
+      clerk_message: "こちらのプランでお申し込みされますか？",
+      http_client: http_client
+    )
+
+    result = service.call
+
+    assert_equal "purchased", result["customer_state"]
+    assert_equal "positive", result["contract_intent"]
+    assert_equal true, result["conversation_end"]
+    assert_equal "contract", result["end_reason"]
+
+    response.verify
+    http_client.verify
+  end
+
   test "Groq APIがエラーを返した場合は例外になる" do
     response = Minitest::Mock.new
 
@@ -348,7 +498,13 @@ class AiRoleplayResponseServiceTest < ActiveSupport::TestCase
 
   private
 
-  def successful_response(reply:)
+  def successful_response(
+    reply:,
+    customer_state: "interested",
+    contract_intent: "considering",
+    conversation_end: false,
+    end_reason: nil
+  )
     response = Minitest::Mock.new
 
     response.expect(:is_a?, true, [ Net::HTTPSuccess ])
@@ -360,11 +516,11 @@ class AiRoleplayResponseServiceTest < ActiveSupport::TestCase
             message: {
               content: {
                 reply: reply,
-                customer_state: "interested",
-                contract_intent: "considering",
+                customer_state: customer_state,
+                contract_intent: contract_intent,
                 reason: "会話を継続している",
-                conversation_end: false,
-                end_reason: nil
+                conversation_end: conversation_end,
+                end_reason: end_reason
               }.to_json
             }
           }
