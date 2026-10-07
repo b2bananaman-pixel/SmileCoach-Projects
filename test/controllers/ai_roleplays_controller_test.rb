@@ -486,4 +486,142 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
       response.parsed_body
     )
   end
+  test "ログインユーザーがAIロープレ記録を保存できる" do
+    sign_in @user
+
+    video = fixture_file_upload(
+      "test_audio.webm",
+      "video/webm"
+    )
+
+    conversation_history = [
+      {
+        role: "user",
+        content: "現在インターネットは何をご利用ですか？"
+      },
+      {
+        role: "assistant",
+        content: "今は他社の光回線を使っています。"
+      }
+    ]
+
+    assert_difference("AiRoleplaySession.count", 1) do
+      assert_difference("AiRoleplayMessage.count", 2) do
+        post ai_roleplays_path,
+             params: {
+               practice_theme_id: practice_themes(:one).id,
+               video: video,
+               duration: 120.5,
+               end_reason: "user_end",
+               started_at: "2026-10-04T10:00:00+09:00",
+               ended_at: "2026-10-04T10:02:00+09:00",
+               conversation_history: conversation_history.to_json
+             }
+      end
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.order(:created_at).last
+
+    assert_equal @user, session.user
+    assert_equal practice_themes(:one), session.practice_theme
+    assert_equal 120.5, session.duration
+    assert_equal "user_end", session.end_reason
+    assert session.video.attached?
+
+    assert_equal(
+      %w[user assistant],
+      session.ai_roleplay_messages.order(:id).pluck(:role)
+    )
+
+    assert_equal(
+      [
+        "現在インターネットは何をご利用ですか？",
+        "今は他社の光回線を使っています。"
+      ],
+      session.ai_roleplay_messages.order(:id).pluck(:content)
+    )
+  end
+
+  test "AIロープレ記録は未ログインの場合保存できない" do
+    assert_no_difference("AiRoleplaySession.count") do
+      post ai_roleplays_path,
+           params: {
+             practice_theme_id: practice_themes(:one).id,
+             duration: 120.0,
+             end_reason: "user_end",
+             conversation_history: [].to_json
+           }
+    end
+
+    assert_redirected_to new_user_session_path
+  end
+
+  test "AIロープレ保存時の会話履歴が不正なJSONの場合は422を返す" do
+    sign_in @user
+
+    assert_no_difference("AiRoleplaySession.count") do
+      post ai_roleplays_path,
+           params: {
+             practice_theme_id: practice_themes(:one).id,
+             duration: 120.0,
+             end_reason: "user_end",
+             conversation_history: "{invalid-json"
+           }
+    end
+
+    assert_response :unprocessable_entity
+    assert_equal(
+      { "error" => "会話履歴の形式が不正です" },
+      response.parsed_body
+    )
+  end
+
+  test "AIロープレ保存時の会話履歴が配列ではない場合は422を返す" do
+    sign_in @user
+
+    assert_no_difference("AiRoleplaySession.count") do
+      post ai_roleplays_path,
+           params: {
+             practice_theme_id: practice_themes(:one).id,
+             duration: 120.0,
+             end_reason: "user_end",
+             conversation_history: {
+               role: "user",
+               content: "こんにちは。"
+             }.to_json
+           }
+    end
+
+    assert_response :unprocessable_entity
+  end
+    test "会話履歴に不正なroleがある場合はセッションごと保存されない" do
+    sign_in @user
+
+    conversation_history = [
+      {
+        role: "user",
+        content: "こんにちは。"
+      },
+      {
+        role: "system",
+        content: "不正なroleです。"
+      }
+    ]
+
+    assert_no_difference("AiRoleplaySession.count") do
+      assert_no_difference("AiRoleplayMessage.count") do
+        post ai_roleplays_path,
+             params: {
+               practice_theme_id: practice_themes(:one).id,
+               duration: 120.0,
+               end_reason: "user_end",
+               conversation_history: conversation_history.to_json
+             }
+      end
+    end
+
+    assert_response :unprocessable_entity
+  end
 end
