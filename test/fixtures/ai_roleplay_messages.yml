@@ -1,0 +1,9 @@
+one:
+  ai_roleplay_session: one
+  role: user
+  content: 現在インターネットは何をご利用ですか？
+
+two:
+  ai_roleplay_session: one
+  role: assistant
+  content: 今は他社の光回線を使っています。

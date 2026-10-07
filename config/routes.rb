@@ -17,6 +17,8 @@ Rails.application.routes.draw do
         on: :member
   end
 
+  resources :ai_roleplays, only: [ :create ]
+
   post "ai_roleplays/synthesize", to: "ai_roleplays#synthesize"
   post "ai_roleplays/respond", to: "ai_roleplays#respond"
   post "ai_roleplays/transcribe", to: "ai_roleplays#transcribe"

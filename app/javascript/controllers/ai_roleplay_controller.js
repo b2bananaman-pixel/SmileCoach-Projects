@@ -21,13 +21,24 @@ export default class extends Controller {
   static values = {
     transcribeUrl: String,
     respondUrl: String,
-    synthesizeUrl: String
+    synthesizeUrl: String,
+    saveUrl: String,
+    practiceThemeId: Number
   }
 
   connect() {
     this.mediaStream = null
+    this.recordingStream = null
     this.roleplayRecorder = null
     this.roleplayChunks = []
+
+    this.audioContext = null
+    this.microphoneSource = null
+    this.recordingDestination = null
+
+    this.roleplayStartedAt = null
+    this.roleplayEndedAt = null
+    this.roleplayEndReason = null
 
     this.turnRecorder = null
     this.turnChunks = []
@@ -38,6 +49,7 @@ export default class extends Controller {
     this.remainingSeconds = 10 * 60
     this.roleplayStarted = false
     this.roleplayEnded = false
+    this.disconnecting = false
 
     this.turnProcessing = false
     this.conversationHistory = []
@@ -46,10 +58,36 @@ export default class extends Controller {
   }
 
   disconnect() {
+    this.disconnecting = true
     this.roleplayEnded = true
+    this.turnProcessing = false
 
     this.clearCountdownTimer()
     this.clearRoleplayTimer()
+
+    if (
+      this.turnRecorder &&
+      this.turnRecorder.state === "recording"
+    ) {
+      this.turnRecorder.stop()
+    }
+
+    if (
+      this.roleplayRecorder &&
+      this.roleplayRecorder.state === "recording"
+    ) {
+      this.roleplayRecorder.stop()
+    }
+
+    this.cleanupAudioMixer().catch(
+      (error) => {
+        console.error(
+          "Audio Mixerの終了に失敗しました",
+          error
+        )
+      }
+    )
+
     this.stopMediaStream()
   }
 
@@ -162,7 +200,7 @@ export default class extends Controller {
     }
   }
 
-  startRoleplay() {
+  async startRoleplay() {
     if (
       this.roleplayStarted ||
       this.roleplayEnded ||
@@ -172,8 +210,33 @@ export default class extends Controller {
     }
 
     this.roleplayStarted = true
+    this.roleplayStartedAt = new Date()
 
-    this.startContinuousRecording()
+    try {
+      await this.startContinuousRecording()
+    } catch (error) {
+      console.error(
+        "録画の開始に失敗しました",
+        error
+      )
+
+      this.roleplayStarted = false
+      this.roleplayStartedAt = null
+
+      this.setStatus(
+        "録画の開始に失敗しました"
+      )
+
+      if (this.hasTurnMessageTarget) {
+        this.turnMessageTarget.textContent =
+          "録画の開始に失敗しました"
+      }
+
+      await this.cleanupAudioMixer()
+      this.stopMediaStream()
+
+      return
+    }
     this.startRoleplayTimer()
     this.startTurnRecording()
 
@@ -198,7 +261,60 @@ export default class extends Controller {
     }
   }
 
-  startContinuousRecording() {
+  async startContinuousRecording() {
+    const AudioContextClass =
+      window.AudioContext ||
+      window.webkitAudioContext
+
+    if (!AudioContextClass) {
+      throw new Error(
+        "このブラウザでは音声ミキサーを使用できません"
+      )
+    }
+
+    this.audioContext =
+      new AudioContextClass()
+
+    if (
+      this.audioContext.state ===
+      "suspended"
+    ) {
+      await this.audioContext.resume()
+    }
+
+    this.microphoneSource =
+      this.audioContext
+        .createMediaStreamSource(
+          this.mediaStream
+        )
+
+    this.recordingDestination =
+      this.audioContext
+        .createMediaStreamDestination()
+
+    this.microphoneSource.connect(
+      this.recordingDestination
+    )
+
+    this.recordingStream =
+      new MediaStream()
+
+    this.mediaStream
+      .getVideoTracks()
+      .forEach((track) => {
+        this.recordingStream.addTrack(
+          track
+        )
+      })
+
+    this.recordingDestination.stream
+      .getAudioTracks()
+      .forEach((track) => {
+        this.recordingStream.addTrack(
+          track
+        )
+      })
+
     const mimeType =
       this.supportedVideoMimeType()
 
@@ -210,7 +326,7 @@ export default class extends Controller {
 
     this.roleplayRecorder =
       new MediaRecorder(
-        this.mediaStream,
+        this.recordingStream,
         options
       )
 
@@ -581,7 +697,7 @@ export default class extends Controller {
         endReason || "会話が終了しました"
     }
 
-    this.finishRoleplay()
+    this.finishRoleplay("natural_end")
   }
 
   startRoleplayTimer() {
@@ -603,7 +719,7 @@ export default class extends Controller {
 
         if (this.remainingSeconds === 0) {
           this.clearRoleplayTimer()
-          this.finishRoleplay()
+          this.finishRoleplay("time_limit")
         }
       }, 1000)
   }
@@ -642,16 +758,22 @@ export default class extends Controller {
       return
     }
 
-    this.finishRoleplay()
+    this.finishRoleplay("user_end")
   }
 
-  finishRoleplay() {
+  finishRoleplay(endReason) {
     if (this.roleplayEnded) {
       return
     }
 
     this.roleplayEnded = true
     this.turnProcessing = false
+
+    this.roleplayEndReason =
+      endReason || "natural_end"
+
+    this.roleplayEndedAt =
+      new Date()
 
     this.clearCountdownTimer()
     this.clearRoleplayTimer()
@@ -669,6 +791,7 @@ export default class extends Controller {
     ) {
       this.roleplayRecorder.stop()
     }
+
 
     if (this.hasStopTurnButtonTarget) {
       this.stopTurnButtonTarget.disabled =
@@ -703,12 +826,52 @@ export default class extends Controller {
     }
   }
 
-  handleRoleplayRecordingStopped() {
-    /*
-     * 録画データの保存、AIロープレ内容分析、
-     * 基本接客分析への受け渡しは後続Issueで実装する。
-     */
-    this.stopMediaStream()
+  async handleRoleplayRecordingStopped() {
+    if (this.disconnecting) {
+      return
+    }
+
+    const mimeType =
+      this.roleplayRecorder?.mimeType ||
+      "video/webm"
+
+    const videoBlob =
+      new Blob(
+        this.roleplayChunks,
+        { type: mimeType }
+      )
+
+    try {
+      await this.saveRoleplay(
+        videoBlob
+      )
+
+      this.setStatus(
+        "ロープレ記録を保存しました"
+      )
+
+      if (this.hasTurnMessageTarget) {
+        this.turnMessageTarget.textContent =
+          "ロープレ記録を保存しました"
+      }
+    } catch (error) {
+      console.error(
+        "AIロープレ記録の保存に失敗しました",
+        error
+      )
+
+      this.setStatus(
+        "AIロープレ記録の保存に失敗しました"
+      )
+
+      if (this.hasTurnMessageTarget) {
+        this.turnMessageTarget.textContent =
+          "AIロープレ記録の保存に失敗しました"
+      }
+    } finally {
+      await this.cleanupAudioMixer()
+      this.stopMediaStream()
+    }
   }
 
   clearCountdownTimer() {
@@ -733,6 +896,40 @@ export default class extends Controller {
     )
 
     this.roleplayTimer = null
+  }
+
+  async cleanupAudioMixer() {
+    if (this.microphoneSource) {
+      try {
+        this.microphoneSource.disconnect()
+      } catch (_error) {
+        /*
+         * すでに切断済みの場合は何もしない。
+         */
+      }
+
+      this.microphoneSource = null
+    }
+
+    if (this.recordingDestination) {
+      this.recordingDestination.stream
+        .getTracks()
+        .forEach((track) => {
+          track.stop()
+        })
+
+      this.recordingDestination = null
+    }
+
+    if (
+      this.audioContext &&
+      this.audioContext.state !== "closed"
+    ) {
+      await this.audioContext.close()
+    }
+
+    this.audioContext = null
+    this.recordingStream = null
   }
 
   stopMediaStream() {
@@ -907,6 +1104,58 @@ export default class extends Controller {
   }
 
   async playAudio(audioBlob) {
+    if (
+      this.audioContext &&
+      this.recordingDestination &&
+      this.audioContext.state !== "closed"
+    ) {
+      if (
+        this.audioContext.state ===
+        "suspended"
+      ) {
+        await this.audioContext.resume()
+      }
+
+      const arrayBuffer =
+        await audioBlob.arrayBuffer()
+
+      const audioBuffer =
+        await this.audioContext.decodeAudioData(
+          arrayBuffer
+        )
+
+      const source =
+        this.audioContext.createBufferSource()
+
+      source.buffer = audioBuffer
+
+      source.connect(
+        this.audioContext.destination
+      )
+
+      source.connect(
+        this.recordingDestination
+      )
+
+      await new Promise(
+        (resolve) => {
+          source.addEventListener(
+            "ended",
+            () => {
+              source.disconnect()
+              resolve()
+            },
+            { once: true }
+          )
+
+          source.start()
+        }
+      )
+
+      return
+
+    }
+
     const handledByMixer =
       await this.playAudioThroughMixer(
         audioBlob
@@ -991,7 +1240,91 @@ export default class extends Controller {
     )
   }
 
+  async saveRoleplay(videoBlob) {
+    if (
+      !this.roleplayStartedAt ||
+      !this.roleplayEndedAt
+    ) {
+      throw new Error(
+        "ロープレの開始・終了時刻を取得できませんでした"
+      )
+    }
+
+    const duration =
+      (
+        this.roleplayEndedAt.getTime() -
+        this.roleplayStartedAt.getTime()
+      ) / 1000
+
+    const formData =
+      new FormData()
+
+    formData.append(
+      "practice_theme_id",
+      this.practiceThemeIdValue
+    )
+
+    formData.append(
+      "video",
+      videoBlob,
+      "ai_roleplay.webm"
+    )
+
+    formData.append(
+      "duration",
+      duration.toString()
+    )
+
+    formData.append(
+      "end_reason",
+      this.roleplayEndReason ||
+      "natural_end"
+    )
+
+    formData.append(
+      "started_at",
+      this.roleplayStartedAt.toISOString()
+    )
+
+    formData.append(
+      "ended_at",
+      this.roleplayEndedAt.toISOString()
+    )
+
+    formData.append(
+      "conversation_history",
+      JSON.stringify(
+        this.conversationHistory
+      )
+    )
+
+    const response =
+      await fetch(
+        this.saveUrlValue,
+        {
+          method: "POST",
+          headers: this.csrfHeaders(),
+          body: formData
+        }
+      )
+
+    const body =
+      await this.parseJson(
+        response
+      )
+
+    if (!response.ok) {
+      throw new Error(
+        body.error ||
+        "AIロープレ記録の保存に失敗しました"
+      )
+    }
+
+    return body
+  }
+
   async parseJson(response) {
+
     try {
       return await response.json()
     } catch (_error) {
