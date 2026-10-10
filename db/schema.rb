@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_04_114657) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_10_013404) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -40,6 +40,32 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_04_114657) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "ai_roleplay_evaluations", force: :cascade do |t|
+    t.bigint "ai_roleplay_session_id", null: false
+    t.integer "hearing_score"
+    t.text "hearing_good_point"
+    t.text "hearing_improvement_point"
+    t.integer "listening_score"
+    t.text "listening_good_point"
+    t.text "listening_improvement_point"
+    t.integer "needs_score"
+    t.text "needs_good_point"
+    t.text "needs_improvement_point"
+    t.integer "proposal_score"
+    t.text "proposal_good_point"
+    t.text "proposal_improvement_point"
+    t.integer "closing_score"
+    t.text "closing_good_point"
+    t.text "closing_improvement_point"
+    t.integer "reference_score"
+    t.text "overall_strength"
+    t.text "priority_improvement"
+    t.text "next_practice_goal"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ai_roleplay_session_id"], name: "index_ai_roleplay_evaluations_on_ai_roleplay_session_id", unique: true
   end
 
   create_table "ai_roleplay_messages", force: :cascade do |t|
@@ -117,6 +143,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_04_114657) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "ai_roleplay_evaluations", "ai_roleplay_sessions"
   add_foreign_key "ai_roleplay_messages", "ai_roleplay_sessions"
   add_foreign_key "ai_roleplay_sessions", "practice_themes"
   add_foreign_key "ai_roleplay_sessions", "users"
