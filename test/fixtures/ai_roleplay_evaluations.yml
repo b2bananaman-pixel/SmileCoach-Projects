@@ -1,0 +1,45 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  ai_roleplay_session: one
+  hearing_score: 1
+  hearing_good_point: MyText
+  hearing_improvement_point: MyText
+  listening_score: 1
+  listening_good_point: MyText
+  listening_improvement_point: MyText
+  needs_score: 1
+  needs_good_point: MyText
+  needs_improvement_point: MyText
+  proposal_score: 1
+  proposal_good_point: MyText
+  proposal_improvement_point: MyText
+  closing_score: 1
+  closing_good_point: MyText
+  closing_improvement_point: MyText
+  reference_score: 1
+  overall_strength: MyText
+  priority_improvement: MyText
+  next_practice_goal: MyText
+
+two:
+  ai_roleplay_session: two
+  hearing_score: 1
+  hearing_good_point: MyText
+  hearing_improvement_point: MyText
+  listening_score: 1
+  listening_good_point: MyText
+  listening_improvement_point: MyText
+  needs_score: 1
+  needs_good_point: MyText
+  needs_improvement_point: MyText
+  proposal_score: 1
+  proposal_good_point: MyText
+  proposal_improvement_point: MyText
+  closing_score: 1
+  closing_good_point: MyText
+  closing_improvement_point: MyText
+  reference_score: 1
+  overall_strength: MyText
+  priority_improvement: MyText
+  next_practice_goal: MyText

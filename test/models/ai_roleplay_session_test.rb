@@ -26,4 +26,19 @@ class AiRoleplaySessionTest < ActiveSupport::TestCase
       session.destroy
     end
   end
+
+  test "has one ai roleplay evaluation" do
+    session = ai_roleplay_sessions(:one)
+
+    assert_equal ai_roleplay_evaluations(:one),
+                 session.ai_roleplay_evaluation
+  end
+
+  test "destroys associated evaluation when destroyed" do
+    session = ai_roleplay_sessions(:one)
+
+    assert_difference("AiRoleplayEvaluation.count", -1) do
+      session.destroy!
+    end
+  end
 end
