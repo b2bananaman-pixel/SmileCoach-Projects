@@ -5,6 +5,13 @@ class AiRoleplaysController < ApplicationController
   def show
   end
 
+  def evaluation
+    @ai_roleplay_session = current_user.ai_roleplay_sessions
+                                       .includes(:practice_theme, :ai_roleplay_evaluation)
+                                       .find(params[:id])
+    @ai_roleplay_evaluation = @ai_roleplay_session.ai_roleplay_evaluation
+  end
+
   def create
     conversation_history = parsed_conversation_history
     practice_theme = PracticeTheme.find(params.require(:practice_theme_id))
@@ -147,6 +154,11 @@ class AiRoleplaysController < ApplicationController
   # 評価に失敗してもセッション保存は成功扱いとするため、例外はここで処理する
   def evaluate_ai_roleplay(ai_roleplay_session)
     AiRoleplayEvaluationService.new(ai_roleplay_session).call
+  rescue AiRoleplayEvaluationService::InvalidResponseError => e
+    # 検証エラーのメッセージは固定文とキー名のみで構成され、会話内容や応答本文を含まない
+    Rails.logger.error(
+      "[AiRoleplaysController#create] AI roleplay evaluation failed: #{e.class} (#{e.message})"
+    )
   rescue StandardError => e
     # 例外メッセージに会話内容やレスポンス本文が含まれる可能性があるため、クラス名のみ記録する
     Rails.logger.error(

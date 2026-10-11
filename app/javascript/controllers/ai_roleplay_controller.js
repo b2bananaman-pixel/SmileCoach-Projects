@@ -23,6 +23,7 @@ export default class extends Controller {
     respondUrl: String,
     synthesizeUrl: String,
     saveUrl: String,
+    evaluationUrl: String,
     practiceThemeId: Number
   }
 
@@ -841,10 +842,22 @@ export default class extends Controller {
         { type: mimeType }
       )
 
+    let evaluationUrl = null
+
+    this.setStatus(
+      "保存・評価しています..."
+    )
+
+    if (this.hasTurnMessageTarget) {
+      this.turnMessageTarget.textContent =
+        "保存・評価しています..."
+    }
+
     try {
-      await this.saveRoleplay(
-        videoBlob
-      )
+      const savedRoleplay =
+        await this.saveRoleplay(
+          videoBlob
+        )
 
       this.setStatus(
         "ロープレ記録を保存しました"
@@ -854,6 +867,11 @@ export default class extends Controller {
         this.turnMessageTarget.textContent =
           "ロープレ記録を保存しました"
       }
+
+      evaluationUrl =
+        this.buildEvaluationUrl(
+          savedRoleplay.id
+        )
     } catch (error) {
       console.error(
         "AIロープレ記録の保存に失敗しました",
@@ -872,6 +890,28 @@ export default class extends Controller {
       await this.cleanupAudioMixer()
       this.stopMediaStream()
     }
+
+    // 録画停止と後片付けが終わってから評価結果画面へ遷移する
+    if (evaluationUrl) {
+      window.location.assign(
+        evaluationUrl
+      )
+    }
+  }
+
+  buildEvaluationUrl(id) {
+    if (
+      !this.hasEvaluationUrlValue ||
+      id === undefined ||
+      id === null
+    ) {
+      return null
+    }
+
+    return this.evaluationUrlValue.replace(
+      ":id",
+      encodeURIComponent(id)
+    )
   }
 
   clearCountdownTimer() {

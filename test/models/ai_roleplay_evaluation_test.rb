@@ -93,6 +93,60 @@ class AiRoleplayEvaluationTest < ActiveSupport::TestCase
     assert_equal @evaluation, session.ai_roleplay_evaluation
   end
 
+  test "defines five categories with Japanese labels in display order" do
+    assert_equal(
+      {
+        hearing: "ヒアリング",
+        listening: "傾聴",
+        needs: "ニーズ把握",
+        proposal: "提案",
+        closing: "クロージング"
+      },
+      AiRoleplayEvaluation::CATEGORY_LABELS
+    )
+  end
+
+  test "converts scores from 1 to 5 into display points, stars and faces" do
+    expected = {
+      1 => [ 20, "★", "😟" ],
+      2 => [ 40, "★★", "😕" ],
+      3 => [ 60, "★★★", "😐" ],
+      4 => [ 80, "★★★★", "🙂" ],
+      5 => [ 100, "★★★★★", "😊" ]
+    }
+
+    AiRoleplayEvaluation::CATEGORY_LABELS.each_key do |category|
+      expected.each do |score, (points, stars, face)|
+        @evaluation.public_send("#{category}_score=", score)
+
+        assert_equal score, @evaluation.score_for(category)
+        assert @evaluation.evaluated?(category)
+        assert_equal points, @evaluation.points_for(category)
+        assert_equal stars, @evaluation.stars_for(category)
+        assert_equal face, @evaluation.face_for(category)
+      end
+    end
+  end
+
+  test "returns nil display values for not applicable categories" do
+    AiRoleplayEvaluation::CATEGORY_LABELS.each_key do |category|
+      @evaluation.public_send("#{category}_score=", nil)
+
+      assert_not @evaluation.evaluated?(category)
+      assert_nil @evaluation.points_for(category)
+      assert_nil @evaluation.stars_for(category)
+      assert_nil @evaluation.face_for(category)
+    end
+  end
+
+  test "returns good point and improvement point for each category" do
+    @evaluation.hearing_good_point = "質問できていました。"
+    @evaluation.hearing_improvement_point = "深掘りしましょう。"
+
+    assert_equal "質問できていました。", @evaluation.good_point_for(:hearing)
+    assert_equal "深掘りしましょう。", @evaluation.improvement_point_for(:hearing)
+  end
+
   test "destroys evaluation when session is destroyed" do
     session = ai_roleplay_sessions(:one)
 

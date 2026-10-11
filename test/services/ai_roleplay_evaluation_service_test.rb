@@ -143,6 +143,121 @@ class AiRoleplayEvaluationServiceTest < ActiveSupport::TestCase
     )
   end
 
+  test "Groq APIへのリクエストに出力上限max_completion_tokensを8192で指定する" do
+    http_client = FakeHttpClient.new(
+      successful_response(valid_evaluation)
+    )
+
+    build_service(http_client).call
+
+    body = JSON.parse(http_client.requests.first.body)
+
+    assert_equal 8192, AiRoleplayEvaluationService::MAX_COMPLETION_TOKENS
+    assert_equal 8192, body["max_completion_tokens"]
+    assert_equal "openai/gpt-oss-20b", body["model"]
+  end
+
+  test "システムプロンプトに評価対象と評価対象外のルールが含まれる" do
+    system_prompt = sent_system_prompt
+
+    assert_includes(
+      system_prompt,
+      "1〜5の整数で評価するか、評価対象外としてください"
+    )
+    assert_includes(
+      system_prompt,
+      "その項目に当てはまる店員の発言や行動が会話中にある場合です。"
+    )
+    assert_includes(
+      system_prompt,
+      "その項目に当てはまる店員の発言や行動が会話中にない場合です。"
+    )
+    assert_includes(
+      system_prompt,
+      "店員が契約の意思確認や次の行動の案内をしていなければ、closing は評価対象外です。"
+    )
+    assert_includes system_prompt, "2つを混在させてはいけません"
+  end
+
+  test "システムプロンプトで低いスコアでも良かった点と改善点の文章を必須とする" do
+    system_prompt = sent_system_prompt
+
+    assert_includes(
+      system_prompt,
+      "good_point と improvement_point の両方に、"
+    )
+    assert_includes(
+      system_prompt,
+      "score が1や2の低い評価でも、good_point と improvement_point は必ず文章にしてください。"
+    )
+    assert_includes(
+      system_prompt,
+      "会話にない発言や行動を作り出してはいけません。"
+    )
+  end
+
+  test "システムプロンプトで評価対象外は3つすべてnullにするよう指示する" do
+    system_prompt = sent_system_prompt
+
+    assert_includes(
+      system_prompt,
+      "score、good_point、improvement_point の3つをすべて null にしてください。"
+    )
+    assert_includes(
+      system_prompt,
+      "score が null の場合に、good_point や improvement_point に文章を入れてはいけません。"
+    )
+  end
+
+  test "システムプロンプトで0点・空文字・なしを使わないよう指示する" do
+    system_prompt = sent_system_prompt
+
+    assert_includes(
+      system_prompt,
+      "null、空文字、「なし」、「特になし」にしてはいけません。"
+    )
+    assert_includes(
+      system_prompt,
+      "評価対象外を表すために 0 を使ってはいけません。"
+    )
+  end
+
+  test "システムプロンプトのJSON例に評価対象と評価対象外の両方が含まれる" do
+    system_prompt = sent_system_prompt
+
+    assert_includes system_prompt, "評価対象の項目の例:"
+    assert_includes(
+      system_prompt,
+      '"hearing": { "score": 4, "good_point": "良かった点の文章", "improvement_point": "改善点の文章" }'
+    )
+    assert_includes system_prompt, "評価対象外の項目の例:"
+    assert_includes(
+      system_prompt,
+      '"closing": { "score": null, "good_point": null, "improvement_point": null }'
+    )
+
+    (
+      AiRoleplayEvaluationService::CATEGORIES +
+      AiRoleplayEvaluationService::SUMMARY_KEYS
+    ).each do |key|
+      assert_includes system_prompt, "\"#{key}\":"
+    end
+  end
+
+  test "closingのスコアが1で良かった点がnullの場合はエラーになり保存されない" do
+    result = valid_evaluation
+    result["closing"] = {
+      "score" => 1,
+      "good_point" => nil,
+      "improvement_point" => "購入意思を確認しましょう。"
+    }
+
+    assert_invalid_response(
+      FakeHttpClient.new(successful_response(result)),
+      "closing.good_point must be a non-empty string"
+    )
+  end
+
   test "会話履歴が0件の場合はGroq APIを呼ばず評価を作成しない" do
     @session.ai_roleplay_messages.destroy_all
 
@@ -235,7 +350,67 @@ class AiRoleplayEvaluationServiceTest < ActiveSupport::TestCase
       successful_response("評価結果です")
     )
 
-    assert_invalid_response(http_client)
+    assert_invalid_response(
+      http_client,
+      "Groq API returned invalid JSON (finish_reason: unknown)"
+    )
+  end
+
+  test "出力が途中で切れた場合はfinish_reasonを例外メッセージで判別できる" do
+    truncated_content = valid_evaluation.to_json[0, 80]
+
+    http_client = FakeHttpClient.new(
+      successful_response(truncated_content, finish_reason: "length")
+    )
+
+    error = assert_raises(AiRoleplayEvaluationService::InvalidResponseError) do
+      build_service(http_client).call
+    end
+
+    assert_equal(
+      "Groq API returned invalid JSON (finish_reason: length)",
+      error.message
+    )
+    assert_not_includes error.message, "家族構成"
+  end
+
+  test "想定外のfinish_reasonは例外メッセージにunknownとして含める" do
+    http_client = FakeHttpClient.new(
+      successful_response(
+        "評価結果です",
+        finish_reason: "何人家族でお使いですか？"
+      )
+    )
+
+    error = assert_raises(AiRoleplayEvaluationService::InvalidResponseError) do
+      build_service(http_client).call
+    end
+
+    assert_equal(
+      "Groq API returned invalid JSON (finish_reason: unknown)",
+      error.message
+    )
+    assert_not_includes error.message, "何人家族"
+  end
+
+  test "検証エラーのメッセージに会話内容・応答本文・APIキーを含まない" do
+    result = valid_evaluation
+    result["closing"] = not_applicable
+    result["closing"]["good_point"] = "何人家族でお使いですか？と質問していました。"
+
+    http_client = FakeHttpClient.new(successful_response(result))
+
+    error = assert_raises(AiRoleplayEvaluationService::InvalidResponseError) do
+      build_service(http_client).call
+    end
+
+    assert_equal(
+      "closing points must be null when score is null",
+      error.message
+    )
+    assert_not_includes error.message, "何人家族"
+    assert_not_includes error.message, "冷蔵庫"
+    assert_not_includes error.message, "test-api-key"
   end
 
   test "レスポンス内容がJSONオブジェクトではない場合は例外になる" do
@@ -371,6 +546,17 @@ class AiRoleplayEvaluationServiceTest < ActiveSupport::TestCase
     )
   end
 
+  def sent_system_prompt
+    http_client = FakeHttpClient.new(
+      successful_response(valid_evaluation)
+    )
+
+    build_service(http_client).call
+
+    JSON.parse(http_client.requests.first.body)
+        .dig("messages", 0, "content")
+  end
+
   def assert_invalid_response(http_client, message = nil)
     assert_no_difference("AiRoleplayEvaluation.count") do
       error = assert_raises(
@@ -424,21 +610,22 @@ class AiRoleplayEvaluationServiceTest < ActiveSupport::TestCase
     }
   end
 
-  def successful_response(content)
+  def successful_response(content, finish_reason: nil)
     content = content.to_json unless content.is_a?(String)
+
+    choice = {
+      message: {
+        content: content
+      }
+    }
+    choice[:finish_reason] = finish_reason unless finish_reason.nil?
 
     response = Net::HTTPOK.new("1.1", "200", "OK")
 
     set_response_body(
       response,
       {
-        choices: [
-          {
-            message: {
-              content: content
-            }
-          }
-        ]
+        choices: [ choice ]
       }.to_json
     )
 
