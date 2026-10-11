@@ -30,6 +30,8 @@ class AiRoleplaysController < ApplicationController
       end
     end
 
+    evaluate_ai_roleplay(ai_roleplay_session)
+
     render json: {
       id: ai_roleplay_session.id
     }, status: :created
@@ -140,6 +142,16 @@ class AiRoleplaysController < ApplicationController
 
   def set_practice_theme
     @practice_theme = PracticeTheme.find(params[:id])
+  end
+
+  # 評価に失敗してもセッション保存は成功扱いとするため、例外はここで処理する
+  def evaluate_ai_roleplay(ai_roleplay_session)
+    AiRoleplayEvaluationService.new(ai_roleplay_session).call
+  rescue StandardError => e
+    # 例外メッセージに会話内容やレスポンス本文が含まれる可能性があるため、クラス名のみ記録する
+    Rails.logger.error(
+      "[AiRoleplaysController#create] AI roleplay evaluation failed: #{e.class}"
+    )
   end
 
   def parsed_conversation_history

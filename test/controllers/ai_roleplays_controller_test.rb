@@ -505,18 +505,20 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
       }
     ]
 
-    assert_difference("AiRoleplaySession.count", 1) do
-      assert_difference("AiRoleplayMessage.count", 2) do
-        post ai_roleplays_path,
-             params: {
-               practice_theme_id: practice_themes(:one).id,
-               video: video,
-               duration: 120.5,
-               end_reason: "user_end",
-               started_at: "2026-10-04T10:00:00+09:00",
-               ended_at: "2026-10-04T10:02:00+09:00",
-               conversation_history: conversation_history.to_json
-             }
+    stub_ai_roleplay_evaluation do
+      assert_difference("AiRoleplaySession.count", 1) do
+        assert_difference("AiRoleplayMessage.count", 2) do
+          post ai_roleplays_path,
+               params: {
+                 practice_theme_id: practice_themes(:one).id,
+                 video: video,
+                 duration: 120.5,
+                 end_reason: "user_end",
+                 started_at: "2026-10-04T10:00:00+09:00",
+                 ended_at: "2026-10-04T10:02:00+09:00",
+                 conversation_history: conversation_history.to_json
+               }
+        end
       end
     end
 
@@ -623,5 +625,138 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :unprocessable_entity
+  end
+
+  test "AIロープレ保存後に保存したセッションの評価を実行する" do
+    sign_in @user
+
+    evaluated_sessions = []
+
+    stub_ai_roleplay_evaluation(evaluated_sessions) do
+      post ai_roleplays_path,
+           params: {
+             practice_theme_id: practice_themes(:one).id,
+             duration: 120.0,
+             end_reason: "user_end",
+             conversation_history: roleplay_conversation_history.to_json
+           }
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.order(:created_at).last
+
+    assert_equal({ "id" => session.id }, response.parsed_body)
+    assert_equal [ session ], evaluated_sessions
+    assert_equal 2, evaluated_sessions.first.ai_roleplay_messages.count
+  end
+
+  test "AIロープレの評価に失敗してもセッションと会話履歴は保存され201を返す" do
+    sign_in @user
+
+    evaluation_service = Minitest::Mock.new
+    evaluation_service.expect(:call, nil) do
+      raise "Groq API request failed: 現在インターネットは何をご利用ですか？"
+    end
+
+    logged_messages = []
+
+    AiRoleplayEvaluationService.stub(:new, ->(_session) { evaluation_service }) do
+      Rails.logger.stub(:error, ->(message = nil) { logged_messages << message }) do
+        assert_difference("AiRoleplaySession.count", 1) do
+          assert_difference("AiRoleplayMessage.count", 2) do
+            assert_no_difference("AiRoleplayEvaluation.count") do
+              post ai_roleplays_path,
+                   params: {
+                     practice_theme_id: practice_themes(:one).id,
+                     duration: 120.0,
+                     end_reason: "user_end",
+                     conversation_history: roleplay_conversation_history.to_json
+                   }
+            end
+          end
+        end
+      end
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.order(:created_at).last
+
+    assert_equal({ "id" => session.id }, response.parsed_body)
+    assert_equal(
+      roleplay_conversation_history.pluck(:content),
+      session.ai_roleplay_messages.order(:id).pluck(:content)
+    )
+
+    evaluation_service.verify
+
+    assert_equal(
+      [ "[AiRoleplaysController#create] AI roleplay evaluation failed: RuntimeError" ],
+      logged_messages
+    )
+  end
+
+  test "AIロープレのセッション保存に失敗した場合は評価を実行しない" do
+    sign_in @user
+
+    conversation_history = [
+      {
+        role: "system",
+        content: "不正なroleです。"
+      }
+    ]
+
+    AiRoleplayEvaluationService.stub(
+      :new,
+      ->(_session) { flunk "評価サービスが呼び出されました" }
+    ) do
+      assert_no_difference("AiRoleplaySession.count") do
+        post ai_roleplays_path,
+             params: {
+               practice_theme_id: practice_themes(:one).id,
+               duration: 120.0,
+               end_reason: "user_end",
+               conversation_history: conversation_history.to_json
+             }
+      end
+    end
+
+    assert_response :unprocessable_entity
+  end
+
+  private
+
+  # テスト中に実際のGroq APIへ通信しないよう、評価サービスを差し替える
+  def stub_ai_roleplay_evaluation(evaluated_sessions = [], &block)
+    evaluation_services = []
+
+    AiRoleplayEvaluationService.stub(
+      :new,
+      lambda { |session|
+        evaluated_sessions << session
+
+        evaluation_service = Minitest::Mock.new
+        evaluation_service.expect(:call, nil)
+        evaluation_services << evaluation_service
+        evaluation_service
+      },
+      &block
+    )
+
+    evaluation_services.each(&:verify)
+  end
+
+  def roleplay_conversation_history
+    [
+      {
+        role: "user",
+        content: "現在インターネットは何をご利用ですか？"
+      },
+      {
+        role: "assistant",
+        content: "今は他社の光回線を使っています。"
+      }
+    ]
   end
 end
