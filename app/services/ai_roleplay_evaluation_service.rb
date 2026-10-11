@@ -6,6 +6,9 @@ class AiRoleplayEvaluationService
   API_URL = "https://api.groq.com/openai/v1/chat/completions"
   MODEL = "openai/gpt-oss-20b"
 
+  # 推論トークンと評価JSONの出力が途中で切れないよう、出力上限を明示する
+  MAX_COMPLETION_TOKENS = 8192
+
   CATEGORIES = %w[
     hearing
     listening
@@ -27,6 +30,8 @@ class AiRoleplayEvaluationService
   ].freeze
 
   SCORE_RANGE = (1..5).freeze
+
+  FINISH_REASON_FORMAT = /\A[a-z_]{1,32}\z/
 
   SPEAKER_LABELS = {
     "user" => "店員",
@@ -57,6 +62,7 @@ class AiRoleplayEvaluationService
 
     request.body = {
       model: MODEL,
+      max_completion_tokens: MAX_COMPLETION_TOKENS,
       messages: [
         {
           role: "system",
@@ -82,16 +88,14 @@ class AiRoleplayEvaluationService
       raise "Groq API request failed: #{response.code}"
     end
 
-    content = parse_json(response.body).dig(
-      "choices",
-      0,
-      "message",
-      "content"
-    )
+    choice = parse_json(response.body).dig("choices", 0)
+    content = choice&.dig("message", "content")
 
     raise "Groq API returned no response content" if content.blank?
 
-    evaluation_attributes = validated_attributes(parse_json(content))
+    evaluation_attributes = validated_attributes(
+      parse_content(content, choice["finish_reason"])
+    )
 
     @ai_roleplay_session.create_ai_roleplay_evaluation!(
       evaluation_attributes
@@ -104,6 +108,22 @@ class AiRoleplayEvaluationService
     JSON.parse(json)
   rescue JSON::ParserError
     raise InvalidResponseError, "Groq API returned invalid JSON"
+  end
+
+  # 出力の途中切れ（finish_reason: length）などを判別できるよう、finish_reasonを例外メッセージに含める
+  def parse_content(content, finish_reason)
+    JSON.parse(content)
+  rescue JSON::ParserError
+    raise InvalidResponseError,
+          "Groq API returned invalid JSON " \
+          "(finish_reason: #{safe_finish_reason(finish_reason)})"
+  end
+
+  # finish_reasonはAPIが返す短い識別子のみを出力し、想定外の値はunknownとする
+  def safe_finish_reason(finish_reason)
+    return finish_reason if finish_reason.is_a?(String) && finish_reason.match?(FINISH_REASON_FORMAT)
+
+    "unknown"
   end
 
   def validated_attributes(result)
@@ -187,7 +207,7 @@ class AiRoleplayEvaluationService
       店員とお客様の会話を読み、店員（練習者）の接客を評価してください。
       お客様の発言は評価対象ではありません。
 
-      次の5項目を、それぞれ1〜5の整数で評価してください。
+      次の5項目それぞれについて、1〜5の整数で評価するか、評価対象外としてください。
 
       hearing（ヒアリング）:
       お客様の現在の利用状況や背景を、質問によって適切に聞き出せているか。
@@ -211,11 +231,26 @@ class AiRoleplayEvaluationService
       2: やや改善が必要
       1: 改善が必要
 
-      会話が短い、または該当する場面がなく評価できない項目は、
-      score、good_point、improvement_point をすべて null にしてください。
+      各項目は、次の「評価対象」か「評価対象外」のどちらか一方だけにしてください。
+      1つの項目の中で、2つを混在させてはいけません。
 
-      評価できる項目では、good_point と improvement_point に、
-      会話中の具体的な発言や場面に触れた日本語の文章を必ず設定してください。
+      評価対象:
+      その項目に当てはまる店員の発言や行動が会話中にある場合です。
+      score を1〜5の整数にし、good_point と improvement_point の両方に、
+      その発言や行動に触れた具体的な日本語の文章を必ず設定してください。
+      score が1や2の低い評価でも、good_point と improvement_point は必ず文章にしてください。
+      good_point には、会話中に実際にあった店員の発言や行動の中から、
+      少しでもできていた点を書いてください。会話にない発言や行動を作り出してはいけません。
+
+      評価対象外:
+      その項目に当てはまる店員の発言や行動が会話中にない場合です。
+      例えば、店員が契約の意思確認や次の行動の案内をしていなければ、closing は評価対象外です。
+      score、good_point、improvement_point の3つをすべて null にしてください。
+
+      score が数値の場合に、good_point や improvement_point を
+      null、空文字、「なし」、「特になし」にしてはいけません。
+      score が null の場合に、good_point や improvement_point に文章を入れてはいけません。
+      評価対象外を表すために 0 を使ってはいけません。
 
       overall_strength には接客全体を通した強み、
       priority_improvement には最も優先して改善すべき点、
@@ -225,12 +260,18 @@ class AiRoleplayEvaluationService
       必ず以下の形式のJSONオブジェクトだけを返してください。
       Markdownやコードブロック、JSON以外の説明文は含めないでください。
 
+      評価対象の項目の例:
+      "hearing": { "score": 4, "good_point": "良かった点の文章", "improvement_point": "改善点の文章" }
+
+      評価対象外の項目の例:
+      "closing": { "score": null, "good_point": null, "improvement_point": null }
+
+      返すJSONの形式:
+      5項目と総合3項目のキーはすべて含めてください。
+      各項目の値は、上の「評価対象の項目の例」か「評価対象外の項目の例」のどちらかの形にしてください。
+
       {
-        "hearing": {
-          "score": 1〜5の整数 または null,
-          "good_point": "良かった点" または null,
-          "improvement_point": "改善点" または null
-        },
+        "hearing": { "score": ..., "good_point": ..., "improvement_point": ... },
         "listening": { "score": ..., "good_point": ..., "improvement_point": ... },
         "needs": { "score": ..., "good_point": ..., "improvement_point": ... },
         "proposal": { "score": ..., "good_point": ..., "improvement_point": ... },

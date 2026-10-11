@@ -1,0 +1,121 @@
+<div class="container py-5">
+  <h1 class="text-center mb-2">AIロープレ評価結果</h1>
+
+  <p class="text-center text-muted mb-5">
+    練習テーマ：<%= @ai_roleplay_session.practice_theme.name %>
+  </p>
+
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+
+      <% if @ai_roleplay_evaluation.present? %>
+        <div class="card shadow-sm mb-4">
+          <div class="card-body">
+            <h2 class="h4 mb-4">評価項目</h2>
+
+            <% AiRoleplayEvaluation::CATEGORY_LABELS.each_with_index do |(category, label), index| %>
+              <div
+                class="border rounded p-3 <%= index == AiRoleplayEvaluation::CATEGORY_LABELS.size - 1 ? "mb-0" : "mb-3" %>"
+                data-ai-roleplay-evaluation-category="<%= category %>"
+              >
+                <div class="row g-2 align-items-center">
+                  <div class="col-12 col-sm-4">
+                    <h3 class="h5 mb-0"><%= label %></h3>
+                  </div>
+
+                  <% if @ai_roleplay_evaluation.evaluated?(category) %>
+                    <div class="col-3 col-sm-2 fw-bold text-nowrap" data-ai-roleplay-evaluation-points>
+                      <%= @ai_roleplay_evaluation.points_for(category) %>点
+                    </div>
+
+                    <div
+                      class="col-6 col-sm-4 text-warning text-nowrap"
+                      data-ai-roleplay-evaluation-stars
+                      aria-label="5段階中<%= @ai_roleplay_evaluation.score_for(category) %>"
+                    >
+                      <%= @ai_roleplay_evaluation.stars_for(category) %>
+                    </div>
+
+                    <div class="col-3 col-sm-2 fs-5" data-ai-roleplay-evaluation-face aria-hidden="true">
+                      <%= @ai_roleplay_evaluation.face_for(category) %>
+                    </div>
+                  <% else %>
+                    <div class="col-12 col-sm-8 text-muted" data-ai-roleplay-evaluation-not-applicable>
+                      評価対象外
+                    </div>
+                  <% end %>
+                </div>
+
+                <% if @ai_roleplay_evaluation.evaluated?(category) %>
+                  <% good_point = @ai_roleplay_evaluation.good_point_for(category) %>
+                  <% improvement_point = @ai_roleplay_evaluation.improvement_point_for(category) %>
+
+                  <% if good_point.present? %>
+                    <div class="mt-3">
+                      <p class="fw-bold mb-1">良かった点</p>
+                      <p class="mb-0"><%= good_point %></p>
+                    </div>
+                  <% end %>
+
+                  <% if improvement_point.present? %>
+                    <div class="mt-3">
+                      <p class="fw-bold mb-1">改善点</p>
+                      <p class="mb-0"><%= improvement_point %></p>
+                    </div>
+                  <% end %>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+          <div class="card-body">
+            <h2 class="h4 mb-3">総合的な強み</h2>
+
+            <p class="mb-0">
+              <%= @ai_roleplay_evaluation.overall_strength %>
+            </p>
+          </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+          <div class="card-body">
+            <h2 class="h4 mb-3">優先して改善する点</h2>
+
+            <p class="mb-0">
+              <%= @ai_roleplay_evaluation.priority_improvement %>
+            </p>
+          </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+          <div class="card-body">
+            <h2 class="h4 mb-3">次回の練習目標</h2>
+
+            <p class="mb-0">
+              <%= @ai_roleplay_evaluation.next_practice_goal %>
+            </p>
+          </div>
+        </div>
+      <% else %>
+        <div class="card shadow-sm mb-4 text-center">
+          <div class="card-body py-4">
+            <p class="mb-2">
+              このロープレの評価結果はありません。
+            </p>
+
+            <p class="text-muted mb-4">
+              評価の作成に失敗したか、評価できる会話がありませんでした。もう一度ロープレに挑戦してみましょう。
+            </p>
+
+            <%= link_to "練習テーマへ戻る",
+                        practice_theme_path(@ai_roleplay_session.practice_theme),
+                        class: "btn btn-primary" %>
+          </div>
+        </div>
+      <% end %>
+
+    </div>
+  </div>
+</div>
