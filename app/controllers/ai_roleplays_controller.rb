@@ -73,7 +73,10 @@ class AiRoleplaysController < ApplicationController
   def synthesize
     text = params.require(:text)
 
-    audio = GoogleTextToSpeechService.new(text: text).call
+    # 画面表示・会話履歴とは別に、音声合成用のテキストだけを読み上げやすい表記へ変換する
+    speech_text = SpeechTextNormalizer.new(text).call
+
+    audio = GoogleTextToSpeechService.new(text: speech_text).call
 
     send_data(
       audio,
