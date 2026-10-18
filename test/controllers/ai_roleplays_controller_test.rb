@@ -145,6 +145,37 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     text_to_speech_service.verify
   end
 
+  test "AI音声の生成時は読み上げ用に変換したテキストを音声合成へ渡す" do
+    sign_in @user
+
+    text_to_speech_service = Minitest::Mock.new
+    text_to_speech_service.expect(
+      :call,
+      "fake mp3 data"
+    )
+
+    GoogleTextToSpeechService.stub(
+      :new,
+      ->(text:) {
+        assert_equal(
+          "毎月ついたちから八千円で、いちにちあたり十ギガバイト使えます。",
+          text
+        )
+        text_to_speech_service
+      }
+    ) do
+      post ai_roleplays_synthesize_path,
+           params: {
+             text: "毎月1日から8,000円で、1日あたり10GB使えます。"
+           }
+    end
+
+    assert_response :success
+    assert_equal "audio/mpeg", response.media_type
+
+    text_to_speech_service.verify
+  end
+
   test "textがない場合は422を返す" do
     sign_in @user
 
