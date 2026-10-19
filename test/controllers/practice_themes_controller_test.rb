@@ -37,6 +37,37 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     assert_select "#stop-recording", "録画停止"
 end
 
+  test "練習画面に撮影ガイドを閉じた状態で表示する" do
+    get practice_theme_url(@practice_theme)
+
+    assert_response :success
+
+    assert_select "details#camera-guide", 1
+    assert_select "details#camera-guide[open]", 0
+
+    assert_select(
+      "details#camera-guide summary",
+      "📷 きれいに映すコツ（バーチャル背景）"
+    )
+
+    assert_select "details#camera-guide li", 6 do |items|
+      assert_equal(
+        [
+          "カメラから少し離れて座りましょう。",
+          "顔・肩・上半身が画面に入るようにしましょう。",
+          "顔や手が明るく映る場所で撮影しましょう。",
+          "背景と服は、できるだけ違う色にしましょう。",
+          "手や腕が画面からはみ出さないようにしましょう。",
+          "映像が乱れる場合は「背景なし」を選びましょう。"
+        ],
+        items.map { |item| item.text.strip }
+      )
+    end
+
+    assert_select "#start-recording", "録画開始"
+    assert_select "#stop-recording", "録画停止"
+  end
+
   test "録音データから声量を分析して保存できる" do
     audio_file = fixture_file_upload(
       "test_volume.webm",
