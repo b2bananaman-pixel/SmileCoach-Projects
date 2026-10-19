@@ -1,8 +1,7 @@
 import { Controller } from "@hotwired/stimulus";
 import {
   ImageSegmenter,
-  FilesetResolver,
-  PoseLandmarker
+  FilesetResolver
 } from "@mediapipe/tasks-vision";
 
 /*
@@ -78,114 +77,10 @@ const SEGMENTATION_MODELS = {
   landscape:
     "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/1/selfie_segmenter_landscape.tflite",
   square:
-    "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite",
-  multiclass:
-    "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite"
+    "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite"
 };
 
 const DEFAULT_SEGMENTATION_MODEL = "landscape";
-
-/*
- * MODNet（?vb_debug=1&vb_model=modnet）
- *
- * 比較検証用のポートレートマッティングモデル。
- * ONNX Runtime Web（WebGPU）で非同期に推論する。
- * 通常利用時は読み込まない。
- *
- * モデル：Xenova/modnet（Apache-2.0）のfp16版。リビジョンを固定する。
- * ライブラリ：onnxruntime-web 1.30.0（MIT）。
- *
- * 入出力（モデルとpreprocessor_config.jsonで確認）：
- *   input  float32 [1, 3, height, width]（RGB、(値 / 255 - 0.5) / 0.5）
- *   output float32 [1, 1, height, width]（透明度 0〜1）
- *   height・widthは32の倍数。
- *
- * 予備としてMediaPipe（landscape）も読み込み、
- * MODNetが使えない場合はMediaPipeで処理する。
- */
-const MODNET_MODEL = "modnet";
-
-const MODNET_ORT_URL =
-  "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.webgpu.min.mjs";
-
-const MODNET_MODEL_URL =
-  "https://huggingface.co/Xenova/modnet/resolve/fa2fa546052fba4c08921230a26cc69a333fca12/onnx/model_fp16.onnx";
-
-/*
- * 入力画像の短辺（?vb_modnet_size=）
- *
- * モデル設定の既定値は512。速度を優先して既定は256にする。
- * 縦横は32の倍数に切り下げる（モデル設定のsize_divisibility）。
- */
-const MODNET_DEFAULT_SIZE = 256;
-const MODNET_SIZES = [256, 320, 384, 448, 512];
-const MODNET_SIZE_DIVISIBILITY = 32;
-
-/*
- * 推論結果がこの時間を超えても返らない場合は
- * MODNetを停止し、MediaPipeへ戻す。
- */
-const MODNET_TIMEOUT_MS = 3000;
-
-/*
- * multiclassモデル（selfie_multiclass_256x256、約16MB）
- *
- * 比較検証用。?vb_debug=1&vb_model=multiclass の場合だけ使用する。
- *
- * confidenceMasksはクラスごとの確率（softmax）で、
- * 0番目は背景。人物の確信度は 1 - 背景 で求める。
- */
-const MULTICLASS_MODEL = "multiclass";
-
-const MULTICLASS_CATEGORIES = [
-  "background",
-  "hair",
-  "body-skin",
-  "face-skin",
-  "clothes",
-  "others"
-];
-
-const MULTICLASS_BACKGROUND_INDEX = 0;
-const MULTICLASS_OTHERS_INDEX = 5;
-
-/*
- * multiclassの人物マスクの計算方法（?vb_debug=1&vb_model=multiclass&vb_person=...）
- *
- * person = 1 - background - others × 重み
- *
- * 通常利用時は常にbg（othersも人物に含める）。
- */
-const MULTICLASS_PERSON_MODES = {
-  bg: 0,
-  others_half: 0.5,
-  no_others: 1
-};
-
-const DEFAULT_MULTICLASS_PERSON_MODE = "bg";
-
-/*
- * クラス別表示（?vb_debug=1&vb_model=multiclass&vb_view=class）の色
- *
- * MULTICLASS_CATEGORIESと同じ順番。
- */
-const MULTICLASS_CLASS_COLORS = [
-  [64, 64, 64],
-  [255, 230, 0],
-  [255, 128, 0],
-  [255, 79, 200],
-  [30, 100, 255],
-  [0, 224, 90]
-];
-
-const MULTICLASS_CLASS_COLOR_NAMES = [
-  "濃い灰",
-  "黄",
-  "橙",
-  "桃",
-  "青",
-  "緑"
-];
 
 /*
  * デバッグモード（?vb_debug=1）用の設定
@@ -195,11 +90,6 @@ const DEBUG_VIEWS = [
   "alpha",
   "edge"
 ];
-
-/*
- * multiclassだけで使えるクラス別表示
- */
-const DEBUG_CLASS_VIEW = "class";
 
 const DEBUG_MAX_EDGE_BLUR_PX = 4;
 
@@ -217,105 +107,14 @@ const DEBUG_MIN_INPUT_WIDTH = 64;
 const DEBUG_MAX_INPUT_WIDTH = 1920;
 
 /*
- * landscapeモデル（入力256×144）の縦横比（?vb_debug=1&vb_aspect=fit）
- *
- * 推論用画像の左右に余白を追加して16:9にし、
- * MediaPipeによる引き伸ばしで人物の形が変わらないようにする。
- */
-const LANDSCAPE_ASPECT_RATIO = 16 / 9;
-
-/*
  * 推論の実行方法（?vb_debug=1&vb_delegate=gpu）
  *
  * 通常利用時は常にCPU。
  */
 const DEFAULT_SEGMENTATION_DELEGATE = "CPU";
-
-/*
- * 骨格の確認（?vb_debug=1&vb_pose=1）用のPose Landmarker
- *
- * lite版（float16、約5.8MB）。
- * モデルカード（BlazePose GHUM 3D）でApache License 2.0を確認済み。
- * 通常利用時は読み込まない。
- */
-const POSE_MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
-
-/*
- * 表示する点（MediaPipeの33点のうち肩・肘・手首）
- *
- * 左右は人物から見た左右。
- */
-const POSE_ARM_POINTS = [
-  { index: 11, name: "左肩" },
-  { index: 12, name: "右肩" },
-  { index: 13, name: "左肘" },
-  { index: 14, name: "右肘" },
-  { index: 15, name: "左手首" },
-  { index: 16, name: "右手首" }
-];
-
-const POSE_ARM_CONNECTIONS = [
-  [11, 12],
-  [11, 13],
-  [13, 15],
-  [12, 14],
-  [14, 16]
-];
-
-/*
- * visibilityの表示の区切り
- *
- * 0.7以上：緑、0.5〜0.7：黄、0.5未満：赤
- */
-const POSE_VISIBILITY_HIGH = 0.7;
-const POSE_VISIBILITY_LOW = 0.5;
 const DEBUG_DELEGATES = {
   cpu: "CPU",
   gpu: "GPU"
-};
-
-/*
- * 2段階しきい値方式（?vb_debug=1&vb_mask=hysteresis）の既定値
- *
- * 比較検証用。通常利用時は使用しない。
- *
- * ENTER: 確信度がこの値以上なら人物状態にする。
- * KEEP:  人物状態の画素は、この値以上なら維持する（この値で不透明）。
- * EXIT:  人物状態の画素も、この値未満ならすぐに解除する（この値で透明）。
- * HOLD:  KEEP未満・EXIT以上の画素を維持する最大時間（ミリ秒）。
- * ENTER_TIMEOUT:
- *   ENTER以上の確信度が最後に確認されてから
- *   人物状態を維持する最大時間（ミリ秒）。0で無効。
- */
-const HYSTERESIS_ENTER = 0.80;
-const HYSTERESIS_KEEP = 0.50;
-const HYSTERESIS_EXIT = 0.30;
-const HYSTERESIS_HOLD_MS = 500;
-const HYSTERESIS_MAX_HOLD_MS = 2000;
-const HYSTERESIS_ENTER_TIMEOUT_MS = 0;
-const HYSTERESIS_MIN_ENTER_TIMEOUT_MS = 100;
-const HYSTERESIS_MAX_ENTER_TIMEOUT_MS = 10000;
-
-/*
- * edge表示で「2段階しきい値で維持」とみなす透明度の差
- */
-const HYSTERESIS_RETAINED_ALPHA_DIFF = 0.1;
-
-const smoothstep = (edge0, edge1, value) => {
-  if (value <= edge0) {
-    return 0;
-  }
-
-  if (value >= edge1) {
-    return 1;
-  }
-
-  const t =
-    (value - edge0) /
-    (edge1 - edge0);
-
-  return t * t * (3 - 2 * t);
 };
 
 export default class extends Controller {
@@ -501,54 +300,8 @@ export default class extends Controller {
 
     this.setupDebugMode();
 
-    /*
-     * Pose Landmarker（?vb_debug=1&vb_pose=1 の場合だけ）
-     *
-     * 準備状態は録画の可否に関係させない。
-     */
-    this.poseLandmarker = null;
-    this.poseDelegate = null;
-    this.poseLandmarks = null;
-    this.poseFailedAt = null;
-
-    /*
-     * vb_aspect=fit（デバッグ時のlandscapeのみ）
-     */
-    this.aspectFitCanvas = null;
-    this.aspectFitContext = null;
-    this.aspectFitLayout = null;
-    this.aspectFitMaskBuffer = null;
-    this.aspectFitDisabled = false;
-
-    /*
-     * MODNet（?vb_debug=1&vb_model=modnet の場合だけ）
-     *
-     * 準備ができるまで、または失敗した場合は
-     * MediaPipe（landscape）で処理する。
-     */
-    this.modnetOrt = null;
-    this.modnetSession = null;
-    this.modnetFailed = false;
-    this.modnetBusy = false;
-    this.modnetBusySince = 0;
-    this.modnetRequestId = 0;
-    this.modnetFrameCanvas = null;
-    this.modnetFrameContext = null;
-    this.modnetInputCanvas = null;
-    this.modnetInputContext = null;
-    this.modnetInputBuffer = null;
-    this.modnetAlphaBuffer = null;
-
     this.setupCamera();
     this.setupSegmenter();
-
-    if (this.debugConfig.model === MODNET_MODEL) {
-      this.setupModnet();
-    }
-
-    if (this.debugConfig.pose) {
-      this.setupPoseLandmarker();
-    }
   }
 
   disconnect() {
@@ -590,41 +343,11 @@ export default class extends Controller {
     this.segmenter = null;
     this.segmenterDelegate = null;
 
-    this.closePoseLandmarker(
-      this.poseLandmarker
-    );
-
-    this.poseLandmarker = null;
-    this.poseDelegate = null;
-    this.poseLandmarks = null;
-    this.poseFailedAt = null;
-
-    this.releaseModnetSession(
-      this.modnetSession
-    );
-
-    this.modnetSession = null;
-    this.modnetOrt = null;
-    this.modnetBusy = false;
-    this.modnetFrameCanvas = null;
-    this.modnetFrameContext = null;
-    this.modnetInputCanvas = null;
-    this.modnetInputContext = null;
-    this.modnetInputBuffer = null;
-    this.modnetAlphaBuffer = null;
-
     this.previousStableMask = null;
     this.maskImageData = null;
     this.refinedMaskBuffer = null;
 
     this.removeDebugCanvas();
-    this.resetHysteresisState();
-    this.multiclassPersonBuffer = null;
-    this.debugClassImageData = null;
-    this.aspectFitCanvas = null;
-    this.aspectFitContext = null;
-    this.aspectFitLayout = null;
-    this.aspectFitMaskBuffer = null;
     this.inferenceCanvas = null;
     this.inferenceContext = null;
     this.segmentationSizeLogKey = null;
@@ -1078,17 +801,8 @@ export default class extends Controller {
             : delegate;
 
         console.log(
-          `[vb_debug] ImageSegmenterの準備が完了しました（model=${this.debugConfig.model === MODNET_MODEL ? `${DEFAULT_SEGMENTATION_MODEL}（MODNetの予備）` : this.debugConfig.model}、delegate=${delegateLabel}、読み込み ${Math.round(performance.now() - loadStartedAt)}ms）`
+          `[vb_debug] ImageSegmenterの準備が完了しました（model=${this.debugConfig.model}、delegate=${delegateLabel}、読み込み ${Math.round(performance.now() - loadStartedAt)}ms）`
         );
-
-        if (
-          this.debugConfig.model ===
-          MULTICLASS_MODEL
-        ) {
-          console.log(
-            `[vb_debug] multiclassのクラス: ${MULTICLASS_CATEGORIES.map((name, index) => `${index}=${name}`).join(", ")}（vb_person=${this.debugConfig.personMode}：${this.describeMulticlassPersonMode()}）`
-          );
-        }
       }
 
       this.segmenterReady = true;
@@ -1118,17 +832,10 @@ export default class extends Controller {
     vision,
     delegate
   ) {
-    /*
-     * vb_model=modnetの場合は、
-     * 予備としてlandscapeを読み込む。
-     */
     const baseOptions = {
       modelAssetPath:
         SEGMENTATION_MODELS[
           this.debugConfig.model
-        ] ||
-        SEGMENTATION_MODELS[
-          DEFAULT_SEGMENTATION_MODEL
         ]
     };
 
@@ -1146,1133 +853,6 @@ export default class extends Controller {
         outputConfidenceMasks: true,
         outputCategoryMask: false
       }
-    );
-  }
-
-  /*
-   * デバッグ用（?vb_debug=1&vb_model=modnet）
-   *
-   * ONNX Runtime Web（WebGPU）とMODNetを読み込む。
-   * WebGPUが使えない場合や失敗した場合は、
-   * MediaPipe（landscape）で続行する。
-   *
-   * 画面遷移などで接続が変わった場合は、
-   * 作成したセッションをすぐに解放する。
-   */
-  async setupModnet() {
-    const connectionId =
-      this.connectionId;
-
-    const isCurrentConnection = () =>
-      !this.isDisconnected &&
-      connectionId === this.connectionId;
-
-    const loadStartedAt =
-      performance.now();
-
-    try {
-      if (
-        typeof navigator === "undefined" ||
-        !navigator.gpu
-      ) {
-        throw new Error(
-          "このブラウザではWebGPUを利用できません"
-        );
-      }
-
-      const ort =
-        await import(MODNET_ORT_URL);
-
-      if (!isCurrentConnection()) {
-        return;
-      }
-
-      /*
-       * クロスオリジン分離をしていないため、
-       * WASMはシングルスレッドで使用する。
-       */
-      ort.env.wasm.numThreads = 1;
-
-      const session =
-        await ort.InferenceSession.create(
-          MODNET_MODEL_URL,
-          {
-            executionProviders: ["webgpu"]
-          }
-        );
-
-      if (!isCurrentConnection()) {
-        this.releaseModnetSession(session);
-        return;
-      }
-
-      if (
-        !session.inputNames.includes("input") ||
-        !session.outputNames.includes("output")
-      ) {
-        this.releaseModnetSession(session);
-
-        throw new Error(
-          `MODNetの入出力名が想定と異なります（input: ${session.inputNames.join(",")} / output: ${session.outputNames.join(",")}）`
-        );
-      }
-
-      this.modnetOrt = ort;
-      this.modnetSession = session;
-
-      console.log(
-        `[vb_debug] MODNetの準備が完了しました（onnxruntime-web 1.30.0、WebGPU、fp16、短辺 ${this.debugConfig.modnetSize}px、後処理=${this.debugConfig.modnetPost}、読み込み ${Math.round(performance.now() - loadStartedAt)}ms）`
-      );
-    } catch (error) {
-      if (!isCurrentConnection()) {
-        return;
-      }
-
-      this.modnetFailed = true;
-
-      console.warn(
-        "[vb_debug] MODNetを起動できませんでした。MediaPipe（landscape）で続行します:",
-        error
-      );
-    }
-  }
-
-  releaseModnetSession(session) {
-    if (!session) {
-      return;
-    }
-
-    try {
-      const released =
-        session.release();
-
-      if (
-        released &&
-        typeof released.catch === "function"
-      ) {
-        released.catch((error) => {
-          console.warn(
-            "[vb_debug] MODNetのセッションの解放に失敗しました:",
-            error
-          );
-        });
-      }
-    } catch (error) {
-      console.warn(
-        "[vb_debug] MODNetのセッションの解放に失敗しました:",
-        error
-      );
-    }
-  }
-
-  /*
-   * MODNetの推論中も画面を止めないため、
-   * 描画は前回の結果（personCanvas）で毎フレーム行い、
-   * 推論は1件ずつ非同期に実行する。
-   */
-  drawPersonWithModnet(
-    video,
-    context,
-    width,
-    height
-  ) {
-    const now =
-      performance.now();
-
-    /*
-     * 結果が返らない場合はMODNetを停止し、
-     * 次のフレームからMediaPipeで処理する。
-     */
-    if (
-      this.modnetBusy &&
-      now - this.modnetBusySince >
-        MODNET_TIMEOUT_MS
-    ) {
-      this.stopModnet(
-        `推論が${MODNET_TIMEOUT_MS}ms以内に終わりませんでした`
-      );
-    } else if (
-      !this.modnetBusy &&
-      this.shouldSegmentCurrentFrame(
-        video,
-        now
-      )
-    ) {
-      this.startModnetInference(
-        video,
-        width,
-        height,
-        now
-      );
-    }
-
-    this.drawSegmentedPerson(
-      video,
-      context,
-      width,
-      height,
-      now
-    );
-  }
-
-  /*
-   * 推論に使うフレームを専用のCanvasに保存し、
-   * 結果が返ったら同じフレームから人物を切り抜く。
-   * （推論中に次のフレームで上書きしない）
-   */
-  startModnetInference(
-    video,
-    width,
-    height,
-    now
-  ) {
-    const metrics =
-      this.debugMetrics;
-
-    const session =
-      this.modnetSession;
-
-    const ort =
-      this.modnetOrt;
-
-    const connectionId =
-      this.connectionId;
-
-    const requestId =
-      ++this.modnetRequestId;
-
-    let feeds;
-
-    try {
-      const preStartedAt =
-        performance.now();
-
-      if (!this.modnetFrameCanvas) {
-        this.modnetFrameCanvas =
-          document.createElement("canvas");
-
-        this.modnetFrameContext =
-          this.modnetFrameCanvas.getContext("2d");
-
-        this.modnetInputCanvas =
-          document.createElement("canvas");
-
-        this.modnetInputContext =
-          this.modnetInputCanvas.getContext(
-            "2d",
-            { willReadFrequently: true }
-          );
-      }
-
-      if (
-        this.modnetFrameCanvas.width !== width ||
-        this.modnetFrameCanvas.height !== height
-      ) {
-        this.modnetFrameCanvas.width = width;
-        this.modnetFrameCanvas.height = height;
-      }
-
-      this.processedVideoFrameCount =
-        this.videoFrameCount;
-
-      this.processedVideoTime =
-        video.currentTime;
-
-      this.modnetFrameContext.drawImage(
-        video,
-        0,
-        0,
-        width,
-        height
-      );
-
-      const {
-        inputWidth,
-        inputHeight
-      } = this.modnetInputSize(
-        width,
-        height
-      );
-
-      if (
-        this.modnetInputCanvas.width !== inputWidth ||
-        this.modnetInputCanvas.height !== inputHeight
-      ) {
-        this.modnetInputCanvas.width = inputWidth;
-        this.modnetInputCanvas.height = inputHeight;
-      }
-
-      /*
-       * モデル設定と同じく、32の倍数の大きさへ
-       * フレーム全体を縮小する（切り取りや余白はない）。
-       */
-      this.modnetInputContext.drawImage(
-        this.modnetFrameCanvas,
-        0,
-        0,
-        inputWidth,
-        inputHeight
-      );
-
-      const pixels =
-        this.modnetInputContext.getImageData(
-          0,
-          0,
-          inputWidth,
-          inputHeight
-        ).data;
-
-      const pixelCount =
-        inputWidth * inputHeight;
-
-      if (
-        !this.modnetInputBuffer ||
-        this.modnetInputBuffer.length !==
-          pixelCount * 3
-      ) {
-        this.modnetInputBuffer =
-          new Float32Array(pixelCount * 3);
-      }
-
-      const input =
-        this.modnetInputBuffer;
-
-      /*
-       * RGBA → RGBのNCHW。
-       * (値 / 255 - 0.5) / 0.5 = 値 / 127.5 - 1
-       */
-      for (
-        let i = 0;
-        i < pixelCount;
-        i++
-      ) {
-        const index =
-          i * 4;
-
-        input[i] =
-          pixels[index] / 127.5 - 1;
-
-        input[pixelCount + i] =
-          pixels[index + 1] / 127.5 - 1;
-
-        input[pixelCount * 2 + i] =
-          pixels[index + 2] / 127.5 - 1;
-      }
-
-      feeds = {
-        input: new ort.Tensor(
-          "float32",
-          input,
-          [1, 3, inputHeight, inputWidth]
-        )
-      };
-
-      if (metrics) {
-        metrics.modnetPreMs +=
-          performance.now() - preStartedAt;
-      }
-
-      this.modnetBusy = true;
-      this.modnetBusySince = now;
-
-      const runStartedAt =
-        performance.now();
-
-      session
-        .run(feeds)
-        .then((outputs) => {
-          const isCurrent =
-            connectionId === this.connectionId &&
-            !this.isDisconnected &&
-            session === this.modnetSession &&
-            requestId === this.modnetRequestId &&
-            !this.modnetFailed;
-
-          const output =
-            outputs.output;
-
-          try {
-            if (!isCurrent) {
-              return;
-            }
-
-            const currentMetrics =
-              this.debugMetrics;
-
-            if (currentMetrics) {
-              currentMetrics.modnetMs +=
-                performance.now() - runStartedAt;
-
-              currentMetrics.modnetFrames++;
-            }
-
-            this.applyModnetResult(
-              output,
-              inputWidth,
-              inputHeight,
-              width,
-              height
-            );
-          } finally {
-            if (
-              output &&
-              typeof output.dispose === "function"
-            ) {
-              output.dispose();
-            }
-          }
-        })
-        .catch((error) => {
-          if (
-            connectionId === this.connectionId &&
-            !this.isDisconnected &&
-            requestId === this.modnetRequestId
-          ) {
-            this.stopModnet(
-              "推論に失敗しました",
-              error
-            );
-          }
-        })
-        .finally(() => {
-          if (requestId === this.modnetRequestId) {
-            this.modnetBusy = false;
-          }
-        });
-    } catch (error) {
-      this.modnetBusy = false;
-
-      this.stopModnet(
-        "推論を開始できませんでした",
-        error
-      );
-    }
-  }
-
-  /*
-   * モデル設定（shortest_edge、size_divisibility=32）に従い、
-   * 短辺をvb_modnet_sizeに合わせてから32の倍数に切り下げる。
-   */
-  modnetInputSize(
-    width,
-    height
-  ) {
-    const shortEdge =
-      this.debugConfig.modnetSize;
-
-    const scale =
-      shortEdge / Math.min(width, height);
-
-    const floorTo = (value) =>
-      Math.max(
-        MODNET_SIZE_DIVISIBILITY,
-        Math.floor(value / MODNET_SIZE_DIVISIBILITY) *
-          MODNET_SIZE_DIVISIBILITY
-      );
-
-    return {
-      inputWidth:
-        floorTo(Math.round(width * scale)),
-      inputHeight:
-        floorTo(Math.round(height * scale))
-    };
-  }
-
-  /*
-   * MODNetの透明度で、推論に使ったフレームから人物を切り抜く。
-   *
-   * raw：透明度を0〜1に収めてそのまま使う。
-   * refine：既存のしきい値・平滑化（vb_maskを含む）を通す。
-   */
-  applyModnetResult(
-    output,
-    maskWidth,
-    maskHeight,
-    width,
-    height
-  ) {
-    const metrics =
-      this.debugMetrics;
-
-    const postStartedAt =
-      metrics
-        ? performance.now()
-        : 0;
-
-    const alpha =
-      output.data;
-
-    const pixelCount =
-      maskWidth * maskHeight;
-
-    if (
-      !output.dims ||
-      output.dims.join("x") !==
-        `1x1x${maskHeight}x${maskWidth}` ||
-      alpha.length !== pixelCount
-    ) {
-      throw new Error(
-        `MODNetの出力の形が想定と異なります（${output.dims ? output.dims.join("x") : "-"}）`
-      );
-    }
-
-    if (
-      !this.modnetAlphaBuffer ||
-      this.modnetAlphaBuffer.length !==
-        pixelCount
-    ) {
-      this.modnetAlphaBuffer =
-        new Float32Array(pixelCount);
-    }
-
-    const mask =
-      this.modnetAlphaBuffer;
-
-    for (
-      let i = 0;
-      i < pixelCount;
-      i++
-    ) {
-      const value =
-        alpha[i];
-
-      /*
-       * NaNは0（背景）として扱う。
-       */
-      mask[i] =
-        value > 0
-          ? Math.min(value, 1)
-          : 0;
-    }
-
-    const now =
-      performance.now();
-
-    let refinedMask = mask;
-
-    if (this.debugConfig.modnetPost === "refine") {
-      refinedMask =
-        this.debugConfig.maskMode === "hysteresis"
-          ? this.createHysteresisMask(
-            mask,
-            now
-          )
-          : this.createRefinedMask(
-            mask
-          );
-    }
-
-    this.drawPersonFromMask(
-      this.modnetFrameCanvas,
-      refinedMask,
-      maskWidth,
-      maskHeight,
-      width,
-      height
-    );
-
-    if (metrics) {
-      metrics.modnetPostMs +=
-        performance.now() - postStartedAt;
-
-      if (this.debugCanvas) {
-        const debugViewStartedAt =
-          performance.now();
-
-        this.drawDebugView(
-          mask,
-          refinedMask,
-          maskWidth,
-          maskHeight,
-          null,
-          this.modnetFrameCanvas
-        );
-
-        metrics.debugViewMs +=
-          performance.now() -
-          debugViewStartedAt;
-
-        metrics.debugViewFrames++;
-      }
-    }
-
-    this.hasPersonCache = true;
-    this.lastMaskTime = now;
-    this.segmentationFailedAt = null;
-  }
-
-  /*
-   * MODNetを停止し、以降はMediaPipe（landscape）で処理する。
-   */
-  stopModnet(
-    reason,
-    error
-  ) {
-    if (this.modnetFailed) {
-      return;
-    }
-
-    this.modnetFailed = true;
-    this.modnetBusy = false;
-
-    /*
-     * 実行中の推論の結果を使わない。
-     */
-    this.modnetRequestId++;
-
-    console.warn(
-      `[vb_debug] MODNet: ${reason}。MediaPipe（landscape）で続行します。`,
-      ...(error ? [error] : [])
-    );
-  }
-
-  reportModnetMetrics(
-    metrics,
-    elapsed
-  ) {
-    if (!this.modnetSession || this.modnetFailed) {
-      console.log(
-        `[vb_debug] MODNet ${this.modnetFailed ? "停止中（MediaPipeで処理）" : "準備中（MediaPipeで処理）"}`
-      );
-
-      return;
-    }
-
-    const average = (total) =>
-      metrics.modnetFrames > 0
-        ? (total / metrics.modnetFrames).toFixed(2)
-        : "-";
-
-    const input =
-      this.modnetInputCanvas
-        ? `${this.modnetInputCanvas.width}x${this.modnetInputCanvas.height}`
-        : "-";
-
-    console.log(
-      `[vb_debug] MODNet 推論 ${average(metrics.modnetMs)}ms（非同期、更新 ${((metrics.modnetFrames * 1000) / elapsed).toFixed(1)}回/秒）/ ` +
-      `前処理 ${average(metrics.modnetPreMs)}ms / 後処理・切り抜き ${average(metrics.modnetPostMs)}ms / ` +
-      `入力 ${input} / 後処理=${this.debugConfig.modnetPost}`
-    );
-  }
-
-  /*
-   * デバッグ用（?vb_debug=1&vb_pose=1）
-   *
-   * Pose Landmarkerを作成する。
-   * 失敗しても背景合成と録画は続行する。
-   *
-   * 画面遷移などで接続が変わった場合は、
-   * 作成したPose Landmarkerをすぐに解放する。
-   */
-  async setupPoseLandmarker() {
-    const connectionId =
-      this.connectionId;
-
-    const isCurrentConnection = () =>
-      !this.isDisconnected &&
-      connectionId === this.connectionId;
-
-    const loadStartedAt =
-      performance.now();
-
-    try {
-      const vision =
-        await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm"
-        );
-
-      if (!isCurrentConnection()) {
-        return;
-      }
-
-      let delegate =
-        this.debugConfig.delegate;
-
-      let landmarker = null;
-
-      if (delegate === "GPU") {
-        try {
-          landmarker =
-            await this.createPoseLandmarker(
-              vision,
-              "GPU"
-            );
-        } catch (error) {
-          console.warn(
-            `[vb_debug] PoseのGPU初期化に失敗したため、CPUで初期化し直します。理由: ${error && error.message ? error.message : String(error)}`
-          );
-
-          delegate = "CPU";
-        }
-
-        if (!isCurrentConnection()) {
-          this.closePoseLandmarker(landmarker);
-          return;
-        }
-      }
-
-      if (!landmarker) {
-        landmarker =
-          await this.createPoseLandmarker(
-            vision,
-            "CPU"
-          );
-      }
-
-      if (!isCurrentConnection()) {
-        this.closePoseLandmarker(landmarker);
-        return;
-      }
-
-      this.poseLandmarker = landmarker;
-      this.poseDelegate = delegate;
-
-      console.log(
-        `[vb_debug] Pose Landmarkerの準備が完了しました（lite、delegate=${delegate}、読み込み ${Math.round(performance.now() - loadStartedAt)}ms）`
-      );
-    } catch (error) {
-      if (!isCurrentConnection()) {
-        return;
-      }
-
-      console.warn(
-        "[vb_debug] Pose Landmarkerを起動できませんでした。骨格を表示せずに続行します（背景合成と録画は継続します）:",
-        error
-      );
-    }
-  }
-
-  createPoseLandmarker(
-    vision,
-    delegate
-  ) {
-    const baseOptions = {
-      modelAssetPath:
-        POSE_MODEL_URL
-    };
-
-    if (delegate === "GPU") {
-      baseOptions.delegate = "GPU";
-    }
-
-    return PoseLandmarker.createFromOptions(
-      vision,
-      {
-        baseOptions,
-
-        runningMode: "VIDEO",
-
-        numPoses: 1,
-        outputSegmentationMasks: false
-      }
-    );
-  }
-
-  closePoseLandmarker(landmarker) {
-    if (!landmarker) {
-      return;
-    }
-
-    try {
-      landmarker.close();
-    } catch (error) {
-      console.warn(
-        "[vb_debug] Pose Landmarkerの終了に失敗しました:",
-        error
-      );
-    }
-  }
-
-  /*
-   * デバッグ用（?vb_debug=1&vb_pose=1）
-   *
-   * 人物認識と同じ画像・タイムスタンプで骨格を推定し、
-   * 肩・肘・手首をデバッグ用Canvasに重ねる。
-   *
-   * 結果は人物マスクに使用しない。
-   * 失敗した場合や人物がいない場合は、骨格を表示しない。
-   */
-  detectPoseForDebug(
-    input,
-    timestamp
-  ) {
-    const metrics =
-      this.debugMetrics;
-
-    const startedAt =
-      performance.now();
-
-    let result = null;
-    let failed = false;
-
-    try {
-      result =
-        this.poseLandmarker.detectForVideo(
-          input,
-          timestamp
-        );
-
-      const landmarks =
-        result.landmarks &&
-        result.landmarks[0];
-
-      /*
-       * 推論結果を解放した後も使えるよう、
-       * 必要な値だけを取り出す。
-       */
-      this.poseLandmarks =
-        landmarks
-          ? POSE_ARM_POINTS.map(({ index, name }) => {
-            const point =
-              landmarks[index];
-
-            return point
-              ? {
-                index,
-                name,
-                x: point.x,
-                y: point.y,
-                visibility:
-                  Number.isFinite(point.visibility)
-                    ? point.visibility
-                    : 0
-              }
-              : null;
-          })
-          : null;
-
-      if (metrics && landmarks) {
-        metrics.poseDetectedFrames++;
-      }
-
-      this.poseFailedAt = null;
-    } catch (error) {
-      failed = true;
-      this.poseLandmarks = null;
-
-      if (metrics) {
-        metrics.poseFailedFrames++;
-      }
-
-      if (this.poseFailedAt === null) {
-        console.warn(
-          "[vb_debug] Poseの推論に失敗しました。骨格を表示せずに続行します:",
-          error
-        );
-
-        this.poseFailedAt = startedAt;
-      }
-    } finally {
-      if (
-        result &&
-        typeof result.close === "function"
-      ) {
-        try {
-          result.close();
-        } catch (error) {
-          console.warn(
-            "[vb_debug] Poseの推論結果の解放に失敗しました:",
-            error
-          );
-        }
-      }
-
-      if (metrics) {
-        metrics.poseMs +=
-          performance.now() - startedAt;
-
-        metrics.poseFrames++;
-      }
-    }
-
-    this.drawPoseOverlay(failed);
-  }
-
-  /*
-   * 肩・肘・手首を線でつなぎ、
-   * visibilityで色分けして描画する。
-   *
-   * 座標は推論用画像に対する0〜1の割合で、
-   * デバッグ用Canvasは推論用画像（マスク）と同じ大きさ。
-   */
-  drawPoseOverlay(failed) {
-    const canvas =
-      this.debugCanvas;
-
-    const context =
-      this.debugContext;
-
-    if (!canvas || !context) {
-      return;
-    }
-
-    const points =
-      this.poseLandmarks;
-
-    if (!points) {
-      this.drawPoseLegend(
-        failed
-          ? "Pose: 推論に失敗しました"
-          : "Pose: 人物を検出できません"
-      );
-
-      return;
-    }
-
-    const width =
-      canvas.width;
-
-    const height =
-      canvas.height;
-
-    const pointByIndex =
-      new Map(
-        points
-          .filter(Boolean)
-          .map((point) => [point.index, point])
-      );
-
-    const colorFor = (visibility) =>
-      visibility >= POSE_VISIBILITY_HIGH
-        ? "rgb(0, 230, 90)"
-        : visibility >= POSE_VISIBILITY_LOW
-          ? "rgb(255, 220, 0)"
-          : "rgb(255, 40, 40)";
-
-    const lineWidth =
-      Math.max(
-        2,
-        Math.round(width / 120)
-      );
-
-    context.save();
-
-    context.lineWidth = lineWidth;
-    context.lineCap = "round";
-
-    POSE_ARM_CONNECTIONS.forEach(([from, to]) => {
-      const start =
-        pointByIndex.get(from);
-
-      const end =
-        pointByIndex.get(to);
-
-      if (!start || !end) {
-        return;
-      }
-
-      const visibility =
-        Math.min(
-          start.visibility,
-          end.visibility
-        );
-
-      /*
-       * どちらかの点のvisibilityが低い線は破線にする。
-       */
-      context.setLineDash(
-        visibility >= POSE_VISIBILITY_HIGH
-          ? []
-          : [lineWidth * 2, lineWidth * 2]
-      );
-
-      context.strokeStyle =
-        colorFor(visibility);
-
-      context.beginPath();
-      context.moveTo(
-        start.x * width,
-        start.y * height
-      );
-      context.lineTo(
-        end.x * width,
-        end.y * height
-      );
-      context.stroke();
-    });
-
-    context.setLineDash([]);
-
-    const fontSize =
-      Math.max(
-        10,
-        Math.round(width / 32)
-      );
-
-    context.font =
-      `${fontSize}px sans-serif`;
-
-    context.textBaseline =
-      "bottom";
-
-    let outsidePoints = 0;
-
-    points.forEach((point) => {
-      if (!point) {
-        return;
-      }
-
-      if (
-        point.x < 0 ||
-        point.x > 1 ||
-        point.y < 0 ||
-        point.y > 1
-      ) {
-        outsidePoints++;
-      }
-
-      const x =
-        point.x * width;
-
-      const y =
-        point.y * height;
-
-      context.fillStyle =
-        colorFor(point.visibility);
-
-      context.beginPath();
-      context.arc(
-        x,
-        y,
-        lineWidth * 1.5,
-        0,
-        Math.PI * 2
-      );
-      context.fill();
-
-      context.fillText(
-        point.visibility.toFixed(2),
-        x + lineWidth * 2,
-        y - lineWidth
-      );
-    });
-
-    context.restore();
-
-    this.drawPoseLegend(
-      `Pose（visibility）: 緑=${POSE_VISIBILITY_HIGH}以上 / 黄=${POSE_VISIBILITY_LOW}〜${POSE_VISIBILITY_HIGH} / 赤=${POSE_VISIBILITY_LOW}未満・破線` +
-        (outsidePoints > 0
-          ? ` / 画面外 ${outsidePoints}点`
-          : "")
-    );
-  }
-
-  /*
-   * 骨格の説明をデバッグ用Canvasの下端に描画する。
-   * （既存の凡例は上端）
-   */
-  drawPoseLegend(text) {
-    const canvas =
-      this.debugCanvas;
-
-    const context =
-      this.debugContext;
-
-    if (!canvas || !context) {
-      return;
-    }
-
-    const fontSize =
-      Math.max(
-        10,
-        Math.round(canvas.width / 32)
-      );
-
-    const boxHeight =
-      Math.round(fontSize * 1.6);
-
-    context.save();
-
-    context.fillStyle =
-      "rgba(0, 0, 0, 0.6)";
-
-    context.fillRect(
-      0,
-      canvas.height - boxHeight,
-      canvas.width,
-      boxHeight
-    );
-
-    context.font =
-      `${fontSize}px sans-serif`;
-
-    context.fillStyle =
-      "#fff";
-
-    context.textBaseline =
-      "top";
-
-    context.fillText(
-      text,
-      fontSize * 0.4,
-      canvas.height - boxHeight + fontSize * 0.3
-    );
-
-    context.restore();
-  }
-
-  /*
-   * 人物認識に失敗したフレームでは、
-   * 古い骨格を残さないようにデバッグ表示を消す。
-   */
-  clearPoseDebugView(message) {
-    this.poseLandmarks = null;
-
-    const canvas =
-      this.debugCanvas;
-
-    const context =
-      this.debugContext;
-
-    if (!canvas || !context) {
-      return;
-    }
-
-    context.clearRect(
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    );
-
-    this.drawPoseLegend(
-      `Pose: ${message}`
-    );
-  }
-
-  /*
-   * Poseの処理時間と、最後に検出した点のvisibilityを表示する。
-   */
-  reportPoseMetrics(metrics) {
-    if (!this.poseLandmarker) {
-      console.log(
-        "[vb_debug] Pose 準備中、または利用できません（骨格表示なし）"
-      );
-
-      return;
-    }
-
-    const average =
-      metrics.poseFrames > 0
-        ? (metrics.poseMs / metrics.poseFrames).toFixed(2)
-        : "-";
-
-    const visibility = {};
-
-    if (this.poseLandmarks) {
-      this.poseLandmarks.forEach((point) => {
-        if (point) {
-          visibility[point.name] =
-            Number(point.visibility.toFixed(2));
-        }
-      });
-    }
-
-    console.log(
-      `[vb_debug] Pose 推論 ${average}ms（delegate=${this.poseDelegate}、${metrics.poseFrames}回、検出 ${metrics.poseDetectedFrames}回、失敗 ${metrics.poseFailedFrames}回、描画時間に含む）`,
-      this.poseLandmarks
-        ? visibility
-        : "未検出"
     );
   }
 
@@ -2409,26 +989,6 @@ export default class extends Controller {
     this.segmentationFailedAt = null;
     this.processedVideoFrameCount = -1;
     this.processedVideoTime = -1;
-
-    /*
-     * 2段階しきい値方式の人物状態も破棄する。
-     */
-    this.resetHysteresisState();
-  }
-
-  /*
-   * 2段階しきい値方式の人物状態を破棄する。
-   *
-   * 通常利用時は配列を作らないため、
-   * 何もしない。
-   */
-  resetHysteresisState() {
-    this.hysteresisState = null;
-    this.hysteresisConfirmedAt = null;
-    this.hysteresisEnteredAt = null;
-    this.hysteresisRetainedFlags = null;
-    this.hysteresisEpoch = 0;
-    this.hysteresisLastUpdateAt = null;
   }
 
   /*
@@ -2558,26 +1118,6 @@ export default class extends Controller {
     );
 
     /*
-     * デバッグ用（?vb_debug=1&vb_model=modnet）
-     *
-     * MODNetの準備ができている場合は、
-     * 非同期の推論結果で人物を描画する。
-     */
-    if (
-      this.modnetSession &&
-      !this.modnetFailed
-    ) {
-      this.drawPersonWithModnet(
-        video,
-        context,
-        width,
-        height
-      );
-
-      return;
-    }
-
-    /*
      * MediaPipeの準備待ち
      */
     if (!this.segmenter) {
@@ -2652,7 +1192,7 @@ export default class extends Controller {
        * frameCanvasを縮小した画像を推論する。
        * 縮小処理の時間も推論時間に含める。
        */
-      const baseSegmentationInput =
+      const segmentationInput =
         this.debugConfig.inputWidth
           ? this.createSegmentationInput(
             width,
@@ -2660,27 +1200,10 @@ export default class extends Controller {
           )
           : this.frameCanvas;
 
-      /*
-       * vb_aspect=fit（デバッグ時のlandscapeのみ）：
-       *   左右に余白を追加した16:9の画像を推論する。
-       *
-       * それ以外は従来どおり。
-       */
-      const segmentationInput =
-        this.debugConfig.aspectFit &&
-        !this.aspectFitDisabled
-          ? this.createAspectFitInput(
-            baseSegmentationInput
-          )
-          : baseSegmentationInput;
-
-      const segmentationTimestamp =
-        this.nextSegmentationTimestamp(now);
-
       result =
         this.segmenter.segmentForVideo(
           segmentationInput,
-          segmentationTimestamp
+          this.nextSegmentationTimestamp(now)
         );
 
       if (metrics) {
@@ -2701,10 +1224,7 @@ export default class extends Controller {
       }
 
       /*
-       * landscape・square：人物の確信度マスク（1チャンネル）
-       * multiclass：背景の確率マスク（6チャンネルの0番目）
-       *
-       * 大きさの取得に使用する。
+       * 人物の確信度マスク（1チャンネル）
        */
       const confidenceMask =
         result.confidenceMasks[0];
@@ -2714,89 +1234,43 @@ export default class extends Controller {
           ? performance.now()
           : 0;
 
-      /*
-       * landscape・square：
-       *   1チャンネルの人物確信度をそのまま使用。
-       *
-       * multiclass：
-       *   背景の確率から人物の確信度へ変換する。
-       */
-      const rawMask =
-        this.debugConfig.model === MULTICLASS_MODEL
-          ? this.createMulticlassPersonMask(
-            result.confidenceMasks,
-            now
-          )
-          : confidenceMask.getAsFloat32Array();
+      const mask =
+        confidenceMask.getAsFloat32Array();
 
       /*
-       * landscape・squareの読み出し時間。
-       * multiclassはcreateMulticlassPersonMaskの中で計測する。
+       * マスクの読み出し時間
+       * （GPUの場合はGPUの処理完了の待ち時間を含む）
        */
-      if (
-        metrics &&
-        this.debugConfig.model !== MULTICLASS_MODEL
-      ) {
+      if (metrics) {
         metrics.readMs +=
           performance.now() - maskStartedAt;
       }
 
+      const maskWidth =
+        confidenceMask.width;
+
+      const maskHeight =
+        confidenceMask.height;
+
       if (metrics) {
         this.logSegmentationSize(
           segmentationInput,
-          confidenceMask.width,
-          confidenceMask.height,
+          maskWidth,
+          maskHeight,
           width,
           height
         );
       }
 
-      /*
-       * vb_aspect=fitの場合は、
-       * 左右の余白を除いて元の推論用画像の大きさに戻す。
-       */
-      const aspectFitMask =
-        segmentationInput === this.aspectFitCanvas
-          ? this.cropAspectFitMask(
-            rawMask,
-            confidenceMask.width,
-            confidenceMask.height
-          )
-          : null;
-
-      const mask =
-        aspectFitMask
-          ? aspectFitMask.mask
-          : rawMask;
-
-      const maskWidth =
-        aspectFitMask
-          ? aspectFitMask.width
-          : confidenceMask.width;
-
-      const maskHeight =
-        aspectFitMask
-          ? aspectFitMask.height
-          : confidenceMask.height;
-
-      /*
-       * 通常利用時は常にcreateRefinedMask。
-       * 2段階しきい値方式はデバッグモードの比較用。
-       */
       const refineStartedAt =
         metrics
           ? performance.now()
           : 0;
 
       const refinedMask =
-        this.debugConfig.maskMode === "hysteresis"
-          ? this.createHysteresisMask(
-            mask,
-            now
-          )
-          : this.createRefinedMask(
-            mask
-          );
+        this.createRefinedMask(
+          mask
+        );
 
       if (metrics) {
         metrics.refineMs +=
@@ -2847,8 +1321,7 @@ export default class extends Controller {
             mask,
             refinedMask,
             maskWidth,
-            maskHeight,
-            result.confidenceMasks
+            maskHeight
           );
 
           metrics.debugViewMs +=
@@ -2856,20 +1329,6 @@ export default class extends Controller {
             debugViewStartedAt;
 
           metrics.debugViewFrames++;
-
-          /*
-           * 骨格の確認（?vb_debug=1&vb_pose=1）
-           *
-           * 人物マスクには使用しない。
-           * 推論と同じ画像・タイムスタンプで実行し、
-           * デバッグ用Canvasに重ねて描画する。
-           */
-          if (this.poseLandmarker) {
-            this.detectPoseForDebug(
-              baseSegmentationInput,
-              segmentationTimestamp
-            );
-          }
         }
       }
 
@@ -2898,16 +1357,6 @@ export default class extends Controller {
         }
 
         this.segmentationFailedAt = now;
-      }
-
-      /*
-       * 骨格の確認中は、推論に失敗したフレームで
-       * 古い骨格を表示し続けない。
-       */
-      if (this.poseLandmarker) {
-        this.clearPoseDebugView(
-          "推論に失敗したため骨格を表示していません"
-        );
       }
     } finally {
       /*
@@ -3070,218 +1519,6 @@ export default class extends Controller {
   }
 
   /*
-   * デバッグ用（?vb_debug=1&vb_aspect=fit、landscapeのみ）
-   *
-   * sourceを拡大・縮小せずに16:9のCanvasの中央へ描き、
-   * 左右に黒い余白を追加する。
-   *
-   * 余白は整数の画素数にし、左右で1画素の差が出る場合は右側を大きくする。
-   * 失敗した場合は従来方式（sourceをそのまま推論）へ戻す。
-   */
-  createAspectFitInput(source) {
-    try {
-      const sourceWidth =
-        source.width;
-
-      const sourceHeight =
-        source.height;
-
-      const inputWidth =
-        Math.round(
-          sourceHeight * LANDSCAPE_ASPECT_RATIO
-        );
-
-      /*
-       * すでに16:9以上に横長の場合は余白を追加しない。
-       */
-      if (inputWidth <= sourceWidth) {
-        this.aspectFitLayout = null;
-        return source;
-      }
-
-      const padLeft =
-        Math.floor(
-          (inputWidth - sourceWidth) / 2
-        );
-
-      const padRight =
-        inputWidth - sourceWidth - padLeft;
-
-      if (!this.aspectFitCanvas) {
-        this.aspectFitCanvas =
-          document.createElement("canvas");
-
-        this.aspectFitContext =
-          this.aspectFitCanvas.getContext("2d");
-      }
-
-      const canvas =
-        this.aspectFitCanvas;
-
-      const context =
-        this.aspectFitContext;
-
-      if (
-        canvas.width !== inputWidth ||
-        canvas.height !== sourceHeight
-      ) {
-        canvas.width = inputWidth;
-        canvas.height = sourceHeight;
-      }
-
-      context.fillStyle = "#000";
-
-      context.fillRect(
-        0,
-        0,
-        inputWidth,
-        sourceHeight
-      );
-
-      context.drawImage(
-        source,
-        padLeft,
-        0,
-        sourceWidth,
-        sourceHeight
-      );
-
-      this.aspectFitLayout = {
-        sourceWidth,
-        sourceHeight,
-        inputWidth,
-        inputHeight: sourceHeight,
-        padLeft,
-        padRight
-      };
-
-      return canvas;
-    } catch (error) {
-      this.disableAspectFit(
-        "推論用画像を作成できませんでした",
-        error
-      );
-
-      return source;
-    }
-  }
-
-  /*
-   * デバッグ用（?vb_debug=1&vb_aspect=fit）
-   *
-   * 余白付きの画像に対するマスクから、
-   * 左右の余白の列を除いて元の推論用画像の大きさに戻す。
-   *
-   * MediaPipeは入力画像と同じ大きさのマスクを返すため、
-   * 列の位置はそのまま元の画像の画素に対応する。
-   */
-  cropAspectFitMask(
-    rawMask,
-    rawWidth,
-    rawHeight
-  ) {
-    const metrics =
-      this.debugMetrics;
-
-    const startedAt =
-      metrics
-        ? performance.now()
-        : 0;
-
-    const layout =
-      this.aspectFitLayout;
-
-    if (
-      !layout ||
-      rawWidth !== layout.inputWidth ||
-      rawHeight !== layout.inputHeight ||
-      rawMask.length !== rawWidth * rawHeight
-    ) {
-      const message =
-        `マスクの大きさ（${rawWidth}x${rawHeight}）が推論用画像（${layout ? `${layout.inputWidth}x${layout.inputHeight}` : "-"}）と異なります`;
-
-      this.disableAspectFit(message);
-
-      throw new Error(
-        `vb_aspect=fit: ${message}`
-      );
-    }
-
-    const {
-      sourceWidth,
-      sourceHeight,
-      inputWidth,
-      padLeft
-    } = layout;
-
-    const pixelCount =
-      sourceWidth * sourceHeight;
-
-    if (
-      !this.aspectFitMaskBuffer ||
-      this.aspectFitMaskBuffer.length !==
-        pixelCount
-    ) {
-      this.aspectFitMaskBuffer =
-        new Float32Array(pixelCount);
-    }
-
-    const mask =
-      this.aspectFitMaskBuffer;
-
-    for (
-      let y = 0;
-      y < sourceHeight;
-      y++
-    ) {
-      const rowStart =
-        y * inputWidth + padLeft;
-
-      mask.set(
-        rawMask.subarray(
-          rowStart,
-          rowStart + sourceWidth
-        ),
-        y * sourceWidth
-      );
-    }
-
-    if (metrics) {
-      metrics.aspectCropMs +=
-        performance.now() - startedAt;
-
-      metrics.aspectCropFrames++;
-    }
-
-    return {
-      mask,
-      width: sourceWidth,
-      height: sourceHeight
-    };
-  }
-
-  /*
-   * vb_aspect=fitを使えない場合は、
-   * 以降のフレームを従来方式で推論する。
-   */
-  disableAspectFit(
-    reason,
-    error
-  ) {
-    if (this.aspectFitDisabled) {
-      return;
-    }
-
-    this.aspectFitDisabled = true;
-    this.aspectFitLayout = null;
-
-    console.warn(
-      `[vb_debug] vb_aspect=fit: ${reason}。従来方式（引き伸ばし）で推論します。`,
-      ...(error ? [error] : [])
-    );
-  }
-
-  /*
    * デバッグ用
    *
    * 推論用画像と返されたマスクの大きさを
@@ -3312,18 +1549,6 @@ export default class extends Controller {
     console.log(
       `[vb_debug] 推論用画像 ${inputSize}（カメラ映像 ${width}x${height}）→ 返されたマスク ${maskSize}`
     );
-
-    const layout =
-      this.aspectFitLayout;
-
-    if (
-      layout &&
-      segmentationInput === this.aspectFitCanvas
-    ) {
-      console.log(
-        `[vb_debug] vb_aspect=fit 入力Canvas ${layout.inputWidth}x${layout.inputHeight}（元映像 ${layout.sourceWidth}x${layout.sourceHeight}）余白 左${layout.padLeft}px / 右${layout.padRight}px → マスクを${layout.sourceWidth}x${layout.sourceHeight}へ切り取り`
-      );
-    }
 
     if (
       maskWidth !== segmentationInput.width ||
@@ -3578,615 +1803,6 @@ export default class extends Controller {
   }
 
   /*
-   * multiclassモデルの出力から
-   * 人物の確信度マスクを作る（比較検証用）。
-   *
-   * personConfidence = 1 - backgroundConfidence
-   *
-   * 6チャンネルでない場合や、
-   * マスクの大きさがそろっていない場合は例外にし、
-   * 既存の推論失敗時の処理に任せる。
-   *
-   * 結果は再利用する配列へ書き込むため、
-   * result.close()後も参照できる。
-   */
-  createMulticlassPersonMask(confidenceMasks, now) {
-    if (
-      confidenceMasks.length !==
-      MULTICLASS_CATEGORIES.length
-    ) {
-      throw new Error(
-        `multiclassの出力が${confidenceMasks.length}チャンネルです（${MULTICLASS_CATEGORIES.length}チャンネルが必要）`
-      );
-    }
-
-    const backgroundMask =
-      confidenceMasks[MULTICLASS_BACKGROUND_INDEX];
-
-    const maskWidth =
-      backgroundMask.width;
-
-    const maskHeight =
-      backgroundMask.height;
-
-    const hasSameSize =
-      confidenceMasks.every((categoryMask) =>
-        categoryMask.width === maskWidth &&
-        categoryMask.height === maskHeight
-      );
-
-    if (!hasSameSize) {
-      throw new Error(
-        "multiclassのマスクの大きさがそろっていません"
-      );
-    }
-
-    /*
-     * デバッグ時だけ内訳を計測する。
-     * GPUの場合、最初の読み出しでGPUの処理完了を待つ。
-     */
-    const metrics =
-      this.debugMetrics;
-
-    let timedAt =
-      metrics
-        ? performance.now()
-        : 0;
-
-    const background =
-      backgroundMask.getAsFloat32Array();
-
-    if (metrics) {
-      const readAt =
-        performance.now();
-
-      metrics.readMs +=
-        readAt - timedAt;
-
-      timedAt = readAt;
-    }
-
-    const pixelCount =
-      background.length;
-
-    if (pixelCount !== maskWidth * maskHeight) {
-      throw new Error(
-        "multiclassのマスクの画素数が大きさと一致しません"
-      );
-    }
-
-    if (
-      !this.multiclassPersonBuffer ||
-      this.multiclassPersonBuffer.length !==
-        pixelCount
-    ) {
-      this.multiclassPersonBuffer =
-        new Float32Array(pixelCount);
-    }
-
-    const personMask =
-      this.multiclassPersonBuffer;
-
-    let invalidPixels = 0;
-
-    /*
-     * othersを差し引く方式（others_half・no_others）の場合だけ
-     * othersの確率を読み取る。
-     */
-    const othersWeight =
-      MULTICLASS_PERSON_MODES[
-        this.debugConfig.personMode
-      ];
-
-    if (metrics) {
-      timedAt = performance.now();
-    }
-
-    const others =
-      othersWeight > 0
-        ? confidenceMasks[
-          MULTICLASS_OTHERS_INDEX
-        ].getAsFloat32Array()
-        : null;
-
-    if (metrics) {
-      const readAt =
-        performance.now();
-
-      metrics.readMs +=
-        readAt - timedAt;
-
-      timedAt = readAt;
-    }
-
-    let invalidOthersPixels = 0;
-
-    for (
-      let i = 0;
-      i < pixelCount;
-      i++
-    ) {
-      const backgroundConfidence =
-        background[i];
-
-      /*
-       * NaNや0〜1の範囲外の値は
-       * 0〜1に収めて使用する。
-       * NaNは背景（人物0）として扱う。
-       */
-      if (
-        !(backgroundConfidence >= 0 &&
-          backgroundConfidence <= 1)
-      ) {
-        invalidPixels++;
-      }
-
-      let person =
-        1 - backgroundConfidence;
-
-      if (others) {
-        const othersConfidence =
-          others[i];
-
-        /*
-         * othersのNaNや範囲外の値は0〜1に収める。
-         * NaNは0（差し引かない）として扱う。
-         */
-        if (
-          !(othersConfidence >= 0 &&
-            othersConfidence <= 1)
-        ) {
-          invalidOthersPixels++;
-        }
-
-        person -=
-          othersWeight *
-          (othersConfidence > 0
-            ? Math.min(othersConfidence, 1)
-            : 0);
-      }
-
-      personMask[i] =
-        person >= 0
-          ? Math.min(person, 1)
-          : 0;
-    }
-
-    if (metrics) {
-      const convertedAt =
-        performance.now();
-
-      metrics.convertMs +=
-        convertedAt - timedAt;
-
-      timedAt = convertedAt;
-    }
-
-    this.checkMulticlassOutput(
-      confidenceMasks,
-      pixelCount,
-      maskWidth,
-      maskHeight,
-      invalidPixels,
-      now,
-      invalidOthersPixels
-    );
-
-    /*
-     * 2秒ごとの確認（全チャンネルの読み出しと集計）は
-     * 統計の時間として数える。
-     */
-    if (metrics) {
-      metrics.statsMs +=
-        performance.now() - timedAt;
-    }
-
-    return personMask;
-  }
-
-  /*
-   * multiclassの出力を一定間隔で確認する（デバッグ表示用）。
-   *
-   * 6クラスの確率の合計と、
-   * 最も確率が高いクラスの画素の割合を表示する。
-   * 全チャンネルを読むのはこのときだけ。
-   */
-  checkMulticlassOutput(
-    confidenceMasks,
-    pixelCount,
-    maskWidth,
-    maskHeight,
-    invalidPixels,
-    now,
-    invalidOthersPixels = 0
-  ) {
-    this.multiclassInvalidPixels =
-      (this.multiclassInvalidPixels || 0) +
-      invalidPixels;
-
-    this.multiclassInvalidOthersPixels =
-      (this.multiclassInvalidOthersPixels || 0) +
-      invalidOthersPixels;
-
-    if (
-      this.multiclassCheckNextAt !== undefined &&
-      now < this.multiclassCheckNextAt
-    ) {
-      return;
-    }
-
-    this.multiclassCheckNextAt =
-      now + DEBUG_REPORT_INTERVAL_MS;
-
-    const channels =
-      confidenceMasks.map((categoryMask) =>
-        categoryMask.getAsFloat32Array()
-      );
-
-    const winners =
-      new Array(channels.length).fill(0);
-
-    let sumTotal = 0;
-    let sumMin = Infinity;
-    let sumMax = -Infinity;
-    let invalidSums = 0;
-
-    for (
-      let i = 0;
-      i < pixelCount;
-      i++
-    ) {
-      let sum = 0;
-      let bestIndex = 0;
-      let bestValue = -Infinity;
-
-      for (
-        let c = 0;
-        c < channels.length;
-        c++
-      ) {
-        const value =
-          channels[c][i];
-
-        sum += value;
-
-        if (value > bestValue) {
-          bestValue = value;
-          bestIndex = c;
-        }
-      }
-
-      if (!Number.isFinite(sum)) {
-        invalidSums++;
-        continue;
-      }
-
-      sumTotal += sum;
-      sumMin = Math.min(sumMin, sum);
-      sumMax = Math.max(sumMax, sum);
-      winners[bestIndex]++;
-    }
-
-    const validPixels =
-      pixelCount - invalidSums;
-
-    const categoryShare = {};
-
-    MULTICLASS_CATEGORIES.forEach((name, index) => {
-      categoryShare[name] =
-        `${((winners[index] / pixelCount) * 100).toFixed(1)}%`;
-    });
-
-    console.log(
-      "[vb_debug] multiclass確認",
-      {
-        channels:
-          confidenceMasks.length,
-        size:
-          `${maskWidth}x${maskHeight}`,
-        probabilitySum:
-          validPixels > 0
-            ? {
-              mean:
-                Number((sumTotal / validPixels).toFixed(4)),
-              min:
-                Number(sumMin.toFixed(4)),
-              max:
-                Number(sumMax.toFixed(4))
-            }
-            : "計算できません",
-        invalidSumPixels:
-          invalidSums,
-        invalidBackgroundPixels:
-          this.multiclassInvalidPixels,
-        ...(this.debugConfig.personMode !==
-          DEFAULT_MULTICLASS_PERSON_MODE
-          ? {
-            person:
-              this.debugConfig.personMode,
-            invalidOthersPixels:
-              this.multiclassInvalidOthersPixels
-          }
-          : {}),
-        categoryShare
-      }
-    );
-
-    this.multiclassInvalidPixels = 0;
-    this.multiclassInvalidOthersPixels = 0;
-  }
-
-  /*
-   * デバッグログ用に、使用中の人物マスクの計算式を返す。
-   */
-  describeMulticlassPersonMode() {
-    const othersWeight =
-      MULTICLASS_PERSON_MODES[
-        this.debugConfig.personMode
-      ];
-
-    const background =
-      MULTICLASS_CATEGORIES[
-        MULTICLASS_BACKGROUND_INDEX
-      ];
-
-    const others =
-      MULTICLASS_CATEGORIES[
-        MULTICLASS_OTHERS_INDEX
-      ];
-
-    if (othersWeight === 0) {
-      return `人物 = 1 - ${background}`;
-    }
-
-    if (othersWeight === 1) {
-      return `人物 = 1 - ${background} - ${others}`;
-    }
-
-    return `人物 = 1 - ${background} - ${others} × ${othersWeight}`;
-  }
-
-  /*
-   * 2段階しきい値方式（比較検証用）
-   *
-   * ?vb_debug=1&vb_mask=hysteresis の場合だけ使用する。
-   *
-   * 時間的平滑化はcreateRefinedMaskと同じ計算を行い、
-   * 平滑化後の確信度に対して人物状態を判定する。
-   *
-   * 人物状態でない画素：
-   *   現在の方式と同じ透明度（新たに背景を表示しない）。
-   *
-   * 人物状態の画素：
-   *   EXIT〜KEEPの範囲で透明度を計算し、
-   *   確信度が少し下がっても表示を維持する。
-   */
-  createHysteresisMask(mask, now) {
-    const {
-      alphaLow,
-      alphaHigh,
-      smoothing,
-      hysteresisEnter: enter,
-      hysteresisKeep: keep,
-      hysteresisExit: exit,
-      hysteresisHoldMs: holdMs,
-      hysteresisEnterTimeoutMs: enterTimeoutMs
-    } = this.debugConfig;
-
-    const pixelCount =
-      mask.length;
-
-    /*
-     * 推論が一定時間途切れた場合は、
-     * 古い人物状態を使わない。
-     */
-    if (
-      this.hysteresisLastUpdateAt !== null &&
-      now - this.hysteresisLastUpdateAt >
-        MASK_HOLD_MS
-    ) {
-      this.resetHysteresisState();
-    }
-
-    if (
-      !this.hysteresisState ||
-      this.hysteresisState.length !== pixelCount
-    ) {
-      this.hysteresisState =
-        new Uint8Array(pixelCount);
-
-      this.hysteresisConfirmedAt =
-        new Float32Array(pixelCount);
-
-      this.hysteresisEnteredAt =
-        new Float32Array(pixelCount);
-
-      this.hysteresisRetainedFlags =
-        new Uint8Array(pixelCount);
-
-      this.hysteresisEpoch = now;
-    }
-
-    this.hysteresisLastUpdateAt = now;
-
-    const isFirstFrame =
-      !this.previousStableMask ||
-      this.previousStableMask.length !==
-        pixelCount;
-
-    if (isFirstFrame) {
-      this.previousStableMask =
-        new Float32Array(pixelCount);
-    }
-
-    if (
-      !this.refinedMaskBuffer ||
-      this.refinedMaskBuffer.length !==
-        pixelCount
-    ) {
-      this.refinedMaskBuffer =
-        new Float32Array(pixelCount);
-    }
-
-    const stableMask =
-      this.previousStableMask;
-
-    const refinedMask =
-      this.refinedMaskBuffer;
-
-    const states =
-      this.hysteresisState;
-
-    const confirmedAt =
-      this.hysteresisConfirmedAt;
-
-    const enteredAt =
-      this.hysteresisEnteredAt;
-
-    const retainedFlags =
-      this.hysteresisRetainedFlags;
-
-    const smoothingWeight =
-      smoothing
-        ? MASK_SMOOTHING_WEIGHT
-        : 0;
-
-    /*
-     * Float32Arrayの精度を保つため、
-     * 状態作成時からの経過時間で記録する。
-     */
-    const time =
-      now - this.hysteresisEpoch;
-
-    let retainedPixels = 0;
-    let releasedByHold = 0;
-    let releasedByTimeout = 0;
-
-    for (
-      let i = 0;
-      i < pixelCount;
-      i++
-    ) {
-      const current =
-        mask[i];
-
-      const previous =
-        stableMask[i];
-
-      const stable =
-        isFirstFrame ||
-        Math.abs(current - previous) >
-          MASK_MOTION_DIFF
-          ? current
-          : current * (1 - smoothingWeight) +
-            previous * smoothingWeight;
-
-      stableMask[i] =
-        stable;
-
-      let state =
-        states[i];
-
-      if (stable >= enter) {
-        /*
-         * ENTER以上：人物状態にする。
-         */
-        state = 1;
-        confirmedAt[i] = time;
-        enteredAt[i] = time;
-      } else if (state === 1) {
-        if (stable < exit) {
-          /*
-           * EXIT未満：すぐに解除。
-           */
-          state = 0;
-        } else if (stable >= keep) {
-          /*
-           * KEEP以上：維持。
-           */
-          confirmedAt[i] = time;
-        } else if (
-          time - confirmedAt[i] >
-          holdMs
-        ) {
-          /*
-           * KEEP未満がHOLD時間を超えた：解除。
-           */
-          state = 0;
-          releasedByHold++;
-        }
-
-        /*
-         * ENTER以上が一定時間確認されない場合は
-         * KEEP以上でも解除する（有効時のみ）。
-         */
-        if (
-          state === 1 &&
-          enterTimeoutMs > 0 &&
-          time - enteredAt[i] >
-            enterTimeoutMs
-        ) {
-          state = 0;
-          releasedByTimeout++;
-        }
-      }
-
-      states[i] =
-        state;
-
-      const normalAlpha =
-        smoothstep(
-          alphaLow,
-          alphaHigh,
-          stable
-        );
-
-      let alpha =
-        normalAlpha;
-
-      if (state === 1) {
-        const heldAlpha =
-          smoothstep(
-            exit,
-            keep,
-            stable
-          );
-
-        if (heldAlpha > alpha) {
-          alpha = heldAlpha;
-        }
-      }
-
-      refinedMask[i] =
-        alpha;
-
-      if (
-        alpha >
-        normalAlpha +
-          HYSTERESIS_RETAINED_ALPHA_DIFF
-      ) {
-        retainedFlags[i] = 1;
-        retainedPixels++;
-      } else {
-        retainedFlags[i] = 0;
-      }
-    }
-
-    if (this.debugMaskStats) {
-      this.debugMaskStats.retainedPixels =
-        retainedPixels;
-
-      this.debugMaskStats.releasedByHold +=
-        releasedByHold;
-
-      this.debugMaskStats.releasedByTimeout +=
-        releasedByTimeout;
-    }
-
-    return refinedMask;
-  }
-
-  /*
    * 推論に使ったフレームから人物を切り抜き、
    * personCanvasへ保存する。
    *
@@ -4412,24 +2028,12 @@ export default class extends Controller {
       enabled: false,
       model: DEFAULT_SEGMENTATION_MODEL,
       inputWidth: null,
-      aspectFit: false,
       delegate: DEFAULT_SEGMENTATION_DELEGATE,
       view: null,
-      classIndex: null,
-      personMode: DEFAULT_MULTICLASS_PERSON_MODE,
-      pose: false,
-      modnetSize: MODNET_DEFAULT_SIZE,
-      modnetPost: "raw",
       smoothing: true,
       alphaLow: MASK_ALPHA_LOW,
       alphaHigh: MASK_ALPHA_HIGH,
       edgeBlurPx: MASK_EDGE_BLUR_PX,
-      maskMode: "current",
-      hysteresisEnter: HYSTERESIS_ENTER,
-      hysteresisKeep: HYSTERESIS_KEEP,
-      hysteresisExit: HYSTERESIS_EXIT,
-      hysteresisHoldMs: HYSTERESIS_HOLD_MS,
-      hysteresisEnterTimeoutMs: HYSTERESIS_ENTER_TIMEOUT_MS,
       warnings: []
     };
 
@@ -4456,8 +2060,7 @@ export default class extends Controller {
         Object.prototype.hasOwnProperty.call(
           SEGMENTATION_MODELS,
           model
-        ) ||
-        model === MODNET_MODEL
+        )
       ) {
         config.model = model;
       } else {
@@ -4491,27 +2094,6 @@ export default class extends Controller {
       }
     }
 
-    /*
-     * 推論用画像の縦横比（landscapeのみ）。
-     * 未指定の場合は従来どおり引き伸ばす。
-     */
-    const aspect =
-      params.get("vb_aspect");
-
-    if (aspect !== null) {
-      if (aspect !== "fit") {
-        config.warnings.push(
-          `vb_aspect=${aspect} は無効です（fit）。従来どおり推論します。`
-        );
-      } else if (config.model !== DEFAULT_SEGMENTATION_MODEL) {
-        config.warnings.push(
-          `vb_aspect=fit はvb_model=${DEFAULT_SEGMENTATION_MODEL}のときだけ使えます。指定を無視します。`
-        );
-      } else {
-        config.aspectFit = true;
-      }
-    }
-
     const delegate =
       params.get("vb_delegate");
 
@@ -4537,139 +2119,11 @@ export default class extends Controller {
     if (view !== null) {
       if (DEBUG_VIEWS.includes(view)) {
         config.view = view;
-      } else if (view === DEBUG_CLASS_VIEW) {
-        if (config.model === MULTICLASS_MODEL) {
-          config.view = view;
-        } else {
-          config.warnings.push(
-            `vb_view=${view} はvb_model=${MULTICLASS_MODEL}のときだけ使えます。デバッグ表示を行いません。`
-          );
-        }
       } else {
         config.warnings.push(
           `vb_view=${view} は無効です。デバッグ表示を行いません。`
         );
       }
-    }
-
-    /*
-     * クラス別表示で、1つのクラスの確率を白黒表示する。
-     * 未指定の場合は最大確率クラスを色分け表示する。
-     */
-    const classParam =
-      params.get("vb_class");
-
-    if (classParam !== null) {
-      const classIndex =
-        MULTICLASS_CATEGORIES.indexOf(classParam);
-
-      if (config.view !== DEBUG_CLASS_VIEW) {
-        config.warnings.push(
-          `vb_class=${classParam} はvb_view=${DEBUG_CLASS_VIEW}（vb_model=${MULTICLASS_MODEL}）のときだけ使えます。指定を無視します。`
-        );
-      } else if (classIndex === -1) {
-        config.warnings.push(
-          `vb_class=${classParam} は無効です（${MULTICLASS_CATEGORIES.join("、")}）。最大確率クラスの色分けを表示します。`
-        );
-      } else {
-        config.classIndex = classIndex;
-      }
-    }
-
-    /*
-     * multiclassの人物マスクの計算方法。
-     * landscape・squareでは使用しない。
-     */
-    const personMode =
-      params.get("vb_person");
-
-    if (personMode !== null) {
-      if (config.model !== MULTICLASS_MODEL) {
-        config.warnings.push(
-          `vb_person=${personMode} はvb_model=${MULTICLASS_MODEL}のときだけ使えます。指定を無視します。`
-        );
-      } else if (
-        Object.prototype.hasOwnProperty.call(
-          MULTICLASS_PERSON_MODES,
-          personMode
-        )
-      ) {
-        config.personMode = personMode;
-      } else {
-        config.warnings.push(
-          `vb_person=${personMode} は無効です（${Object.keys(MULTICLASS_PERSON_MODES).join("、")}）。${DEFAULT_MULTICLASS_PERSON_MODE}を使用します。`
-        );
-      }
-    }
-
-    /*
-     * MODNetの入力の短辺と後処理（vb_model=modnetのときだけ）。
-     *
-     * raw：MODNetの透明度をそのまま使う（既定）。
-     * refine：既存のしきい値・平滑化（vb_maskも含む）を通す。
-     */
-    const modnetSize =
-      params.get("vb_modnet_size");
-
-    const modnetPost =
-      params.get("vb_modnet_post");
-
-    if (config.model === MODNET_MODEL) {
-      if (modnetSize !== null) {
-        if (
-          MODNET_SIZES.map(String).includes(modnetSize)
-        ) {
-          config.modnetSize = Number(modnetSize);
-        } else {
-          config.warnings.push(
-            `vb_modnet_size=${modnetSize} は無効です（${MODNET_SIZES.join("、")}）。${MODNET_DEFAULT_SIZE}を使用します。`
-          );
-        }
-      }
-
-      if (modnetPost !== null) {
-        if (
-          modnetPost === "raw" ||
-          modnetPost === "refine"
-        ) {
-          config.modnetPost = modnetPost;
-        } else {
-          config.warnings.push(
-            `vb_modnet_post=${modnetPost} は無効です（raw、refine）。rawを使用します。`
-          );
-        }
-      }
-
-      if (params.get("vb_pose") === "1") {
-        config.warnings.push(
-          "vb_pose=1 はvb_model=modnetでは使えません（MediaPipeへ戻った場合だけ使用します）。"
-        );
-      }
-    } else if (
-      modnetSize !== null ||
-      modnetPost !== null
-    ) {
-      config.warnings.push(
-        `vb_modnet_size・vb_modnet_post はvb_model=${MODNET_MODEL}のときだけ使えます。指定を無視します。`
-      );
-    }
-
-    /*
-     * 骨格の確認（Pose Landmarker）。
-     * 人物マスクには使用しない。
-     */
-    const pose =
-      params.get("vb_pose");
-
-    if (pose === "1") {
-      config.pose = true;
-    } else if (
-      pose !== null &&
-      pose !== "0"
-    ) {
-      config.warnings.push(
-        `vb_pose=${pose} は無効です（1、0）。骨格を表示しません。`
-      );
     }
 
     const smooth =
@@ -4729,111 +2183,7 @@ export default class extends Controller {
         config.warnings
       );
 
-    this.parseHysteresisParams(
-      params,
-      config
-    );
-
     return config;
-  }
-
-  /*
-   * 2段階しきい値方式のパラメータを読み取る。
-   */
-  parseHysteresisParams(params, config) {
-    const mode =
-      params.get("vb_mask");
-
-    if (mode === "hysteresis") {
-      config.maskMode = "hysteresis";
-    } else if (
-      mode !== null &&
-      mode !== "current"
-    ) {
-      config.warnings.push(
-        `vb_mask=${mode} は無効です。現在の方式（current）を使用します。`
-      );
-    }
-
-    const enter =
-      this.parseDebugNumberParam(
-        params,
-        "vb_enter",
-        0,
-        1,
-        HYSTERESIS_ENTER,
-        config.warnings
-      );
-
-    const keep =
-      this.parseDebugNumberParam(
-        params,
-        "vb_keep",
-        0,
-        1,
-        HYSTERESIS_KEEP,
-        config.warnings
-      );
-
-    const exit =
-      this.parseDebugNumberParam(
-        params,
-        "vb_exit",
-        0,
-        1,
-        HYSTERESIS_EXIT,
-        config.warnings
-      );
-
-    /*
-     * EXIT < KEEP < ENTER を満たさない場合は
-     * 3つとも既定値を使用する。
-     */
-    if (exit < keep && keep < enter) {
-      config.hysteresisEnter = enter;
-      config.hysteresisKeep = keep;
-      config.hysteresisExit = exit;
-    } else {
-      config.warnings.push(
-        `vb_exit=${exit} < vb_keep=${keep} < vb_enter=${enter} を満たさないため、既定値（${HYSTERESIS_EXIT} / ${HYSTERESIS_KEEP} / ${HYSTERESIS_ENTER}）を使用します。`
-      );
-    }
-
-    config.hysteresisHoldMs =
-      this.parseDebugNumberParam(
-        params,
-        "vb_hold",
-        0,
-        HYSTERESIS_MAX_HOLD_MS,
-        HYSTERESIS_HOLD_MS,
-        config.warnings
-      );
-
-    /*
-     * 0は無効。
-     * 有効にする場合は100〜10000ミリ秒。
-     */
-    const enterTimeout =
-      this.parseDebugNumberParam(
-        params,
-        "vb_enter_timeout",
-        0,
-        HYSTERESIS_MAX_ENTER_TIMEOUT_MS,
-        HYSTERESIS_ENTER_TIMEOUT_MS,
-        config.warnings
-      );
-
-    if (
-      enterTimeout !== 0 &&
-      enterTimeout < HYSTERESIS_MIN_ENTER_TIMEOUT_MS
-    ) {
-      config.warnings.push(
-        `vb_enter_timeout=${enterTimeout} は無効です（0、または${HYSTERESIS_MIN_ENTER_TIMEOUT_MS}〜${HYSTERESIS_MAX_ENTER_TIMEOUT_MS}）。時間制限を無効にします。`
-      );
-    } else {
-      config.hysteresisEnterTimeoutMs =
-        enterTimeout;
-    }
   }
 
   /*
@@ -4896,47 +2246,12 @@ export default class extends Controller {
         model: config.model,
         inputWidth:
           config.inputWidth || "カメラ映像と同じ",
-        aspect:
-          config.aspectFit
-            ? "fit"
-            : "従来（引き伸ばし）",
         delegate: config.delegate,
         view: config.view || "なし",
-        ...(config.view === DEBUG_CLASS_VIEW
-          ? {
-            class:
-              config.classIndex === null
-                ? "最大確率クラス"
-                : MULTICLASS_CATEGORIES[config.classIndex]
-          }
-          : {}),
-        ...(config.model === MULTICLASS_MODEL
-          ? {
-            person: config.personMode
-          }
-          : {}),
-        pose: config.pose,
-        ...(config.model === MODNET_MODEL
-          ? {
-            modnetSize: config.modnetSize,
-            modnetPost: config.modnetPost
-          }
-          : {}),
         smoothing: config.smoothing,
         alphaLow: config.alphaLow,
         alphaHigh: config.alphaHigh,
-        edgeBlurPx: config.edgeBlurPx,
-        mask: config.maskMode,
-        ...(config.maskMode === "hysteresis"
-          ? {
-            enter: config.hysteresisEnter,
-            keep: config.hysteresisKeep,
-            exit: config.hysteresisExit,
-            holdMs: config.hysteresisHoldMs,
-            enterTimeoutMs:
-              config.hysteresisEnterTimeoutMs || "無効"
-          }
-          : {})
+        edgeBlurPx: config.edgeBlurPx
       }
     );
 
@@ -4955,17 +2270,10 @@ export default class extends Controller {
       nextAt:
         performance.now() +
         DEBUG_REPORT_INTERVAL_MS,
-      baseline: null,
-      retainedPixels: 0,
-      releasedByHold: 0,
-      releasedByTimeout: 0
+      baseline: null
     };
 
-    /*
-     * 骨格の確認だけの場合も、
-     * 骨格を重ねるデバッグ用Canvasを作成する。
-     */
-    if (config.view || config.pose) {
+    if (config.view) {
       this.setupDebugCanvas();
     }
   }
@@ -4982,21 +2290,10 @@ export default class extends Controller {
       debugViewFrames: 0,
       debugViewMs: 0,
       readMs: 0,
-      convertMs: 0,
       refineMs: 0,
       maskCanvasMs: 0,
       compositeMs: 0,
-      statsMs: 0,
-      aspectCropMs: 0,
-      aspectCropFrames: 0,
-      modnetFrames: 0,
-      modnetMs: 0,
-      modnetPreMs: 0,
-      modnetPostMs: 0,
-      poseFrames: 0,
-      poseMs: 0,
-      poseDetectedFrames: 0,
-      poseFailedFrames: 0
+      statsMs: 0
     };
   }
 
@@ -5062,10 +2359,7 @@ export default class extends Controller {
         "黄=輪郭（カメラ映像とバーチャル背景が混ざる部分） / " +
         "赤=元の背景が残っている可能性（推定：表示中だが現在フレームの確信度0.5未満） / " +
         "水色=人物が欠けている可能性（推定：確信度0.5以上だが透明度0.5未満）。" +
-        "赤・水色は輪郭ぼかしの影響を含まない推定表示です。" +
-        (this.debugConfig.maskMode === "hysteresis"
-          ? " / 紫=2段階しきい値で維持している部分（現在の方式なら透明寄りになる部分。他の色より優先）"
-          : "")
+        "赤・水色は輪郭ぼかしの影響を含まない推定表示です。"
       );
     }
   }
@@ -5173,27 +2467,12 @@ export default class extends Controller {
 
       console.log(
         `[vb_debug] 内訳 読み出し（GPU待ち含む） ${perMask(metrics.readMs)}ms / ` +
-        `人物確信度 ${perMask(metrics.convertMs)}ms / ` +
         `平滑化・しきい値 ${perMask(metrics.refineMs)}ms / ` +
         `マスクCanvas ${perMask(metrics.maskCanvasMs)}ms / ` +
         `切り抜き ${perMask(metrics.compositeMs)}ms / ` +
         `統計 ${perMask(metrics.statsMs)}ms / ` +
-        (metrics.aspectCropFrames > 0
-          ? `余白の切り取り ${(metrics.aspectCropMs / metrics.aspectCropFrames).toFixed(2)}ms / `
-          : "") +
         `推論+読み出し ${(inferenceAverage + metrics.readMs / metrics.maskFrames).toFixed(2)}ms`
       );
-    }
-
-    if (this.debugConfig.model === MODNET_MODEL) {
-      this.reportModnetMetrics(
-        metrics,
-        elapsed
-      );
-    }
-
-    if (this.debugConfig.pose) {
-      this.reportPoseMetrics(metrics);
     }
 
     this.debugMetrics =
@@ -5259,22 +2538,9 @@ export default class extends Controller {
         edgePixels:
           summary.edgePixels,
         edgeMeanChange:
-          summary.edgeMeanChange,
-        ...(this.debugConfig.maskMode === "hysteresis"
-          ? {
-            retainedPixels:
-              stats.retainedPixels,
-            releasedByHold:
-              stats.releasedByHold,
-            releasedByTimeout:
-              stats.releasedByTimeout
-          }
-          : {})
+          summary.edgeMeanChange
       }
     );
-
-    stats.releasedByHold = 0;
-    stats.releasedByTimeout = 0;
   }
 
   /*
@@ -5376,9 +2642,7 @@ export default class extends Controller {
     mask,
     refinedMask,
     maskWidth,
-    maskHeight,
-    confidenceMasks,
-    frameSource = this.frameCanvas
+    maskHeight
   ) {
     const canvas =
       this.debugCanvas;
@@ -5401,32 +2665,6 @@ export default class extends Controller {
     const view =
       this.debugConfig.view;
 
-    /*
-     * vb_poseだけの場合は、
-     * 推論に使ったカメラフレームを表示する（骨格は後で重ねる）。
-     */
-    if (!view) {
-      context.drawImage(
-        frameSource,
-        0,
-        0,
-        maskWidth,
-        maskHeight
-      );
-
-      return;
-    }
-
-    if (view === DEBUG_CLASS_VIEW) {
-      this.drawClassView(
-        confidenceMasks,
-        maskWidth,
-        maskHeight
-      );
-
-      return;
-    }
-
     let imageData;
 
     if (view === "edge") {
@@ -5435,7 +2673,7 @@ export default class extends Controller {
        * マスクと同じ大きさで描画する。
        */
       context.drawImage(
-        frameSource,
+        this.frameCanvas,
         0,
         0,
         maskWidth,
@@ -5459,13 +2697,6 @@ export default class extends Controller {
 
     const pixels =
       imageData.data;
-
-    const retainedFlags =
-      this.debugConfig.maskMode === "hysteresis" &&
-      this.hysteresisRetainedFlags &&
-      this.hysteresisRetainedFlags.length === mask.length
-        ? this.hysteresisRetainedFlags
-        : null;
 
     for (
       let i = 0;
@@ -5506,15 +2737,7 @@ export default class extends Controller {
 
       let color = null;
 
-      if (
-        retainedFlags &&
-        retainedFlags[i] === 1
-      ) {
-        /*
-         * 紫：2段階しきい値で維持している部分
-         */
-        color = [200, 0, 255];
-      } else if (alpha >= 0.1 && confidence < 0.5) {
+      if (alpha >= 0.1 && confidence < 0.5) {
         /*
          * 赤（推定）：元の背景が残っている可能性
          */
@@ -5562,10 +2785,7 @@ export default class extends Controller {
       this.drawDebugLegend([
         "黄: 輪郭（映像と背景が混ざる部分）",
         "赤: 元の背景が残る可能性（推定）",
-        "水色: 人物が欠ける可能性（推定）",
-        ...(retainedFlags
-          ? ["紫: 2段階しきい値で維持（現方式なら透明寄り）"]
-          : [])
+        "水色: 人物が欠ける可能性（推定）"
       ]);
     } else {
       this.drawDebugLegend([
@@ -5576,148 +2796,7 @@ export default class extends Controller {
     }
   }
 
-  /*
-   * デバッグ用（?vb_debug=1&vb_model=multiclass&vb_view=class）
-   *
-   * MediaPipeから返された6つのconfidenceMasksを読み、
-   * 最大確率クラスの色分け、または
-   * vb_classで指定したクラスの確率（白=1 / 黒=0）を表示する。
-   *
-   * 人物マスクと背景合成には使用しない。
-   * result.close()より前に呼び出す。
-   */
-  drawClassView(
-    confidenceMasks,
-    maskWidth,
-    maskHeight
-  ) {
-    const context =
-      this.debugContext;
-
-    const pixelCount =
-      maskWidth * maskHeight;
-
-    const channels =
-      confidenceMasks.map((categoryMask) =>
-        categoryMask.getAsFloat32Array()
-      );
-
-    if (
-      !this.debugClassImageData ||
-      this.debugClassImageData.width !== maskWidth ||
-      this.debugClassImageData.height !== maskHeight
-    ) {
-      this.debugClassImageData =
-        context.createImageData(
-          maskWidth,
-          maskHeight
-        );
-    }
-
-    const imageData =
-      this.debugClassImageData;
-
-    const pixels =
-      imageData.data;
-
-    const classIndex =
-      this.debugConfig.classIndex;
-
-    if (classIndex !== null) {
-      const channel =
-        channels[classIndex];
-
-      for (
-        let i = 0;
-        i < pixelCount;
-        i++
-      ) {
-        const value =
-          channel[i];
-
-        /*
-         * NaNは黒（0）として表示する。
-         */
-        const gray =
-          value > 0
-            ? Math.min(
-              255,
-              Math.round(value * 255)
-            )
-            : 0;
-
-        const index =
-          i * 4;
-
-        pixels[index] = gray;
-        pixels[index + 1] = gray;
-        pixels[index + 2] = gray;
-        pixels[index + 3] = 255;
-      }
-    } else {
-      for (
-        let i = 0;
-        i < pixelCount;
-        i++
-      ) {
-        /*
-         * 6クラスを比較し、最も確率が高いクラスを選ぶ。
-         * NaNは比較の対象にしない（全クラスNaNなら黒）。
-         */
-        let bestIndex = -1;
-        let bestValue = -Infinity;
-
-        for (
-          let c = 0;
-          c < channels.length;
-          c++
-        ) {
-          const value =
-            channels[c][i];
-
-          if (value > bestValue) {
-            bestValue = value;
-            bestIndex = c;
-          }
-        }
-
-        const color =
-          bestIndex >= 0
-            ? MULTICLASS_CLASS_COLORS[bestIndex]
-            : [0, 0, 0];
-
-        const index =
-          i * 4;
-
-        pixels[index] = color[0];
-        pixels[index + 1] = color[1];
-        pixels[index + 2] = color[2];
-        pixels[index + 3] = 255;
-      }
-    }
-
-    context.putImageData(
-      imageData,
-      0,
-      0
-    );
-
-    if (classIndex !== null) {
-      this.drawDebugLegend([
-        `class: ${MULTICLASS_CATEGORIES[classIndex]}の確率（白=1 / 黒=0）`
-      ]);
-    } else {
-      this.drawDebugLegend(
-        MULTICLASS_CATEGORIES.map(
-          (name, index) =>
-            `${MULTICLASS_CLASS_COLOR_NAMES[index]}: ${name}`
-        ),
-        MULTICLASS_CLASS_COLORS
-      );
-    }
-  }
-
-  drawDebugLegend(lines, colors = null) {
+  drawDebugLegend(lines) {
     const canvas =
       this.debugCanvas;
 
@@ -5759,40 +2838,10 @@ export default class extends Controller {
       "top";
 
     lines.forEach((line, index) => {
-      const top =
-        fontSize * 0.3 + lineHeight * index;
-
-      let left =
-        fontSize * 0.4;
-
-      /*
-       * 色の指定がある場合は
-       * 文字の前に色見本を描画する。
-       */
-      if (colors && colors[index]) {
-        const [red, green, blue] =
-          colors[index];
-
-        context.fillStyle =
-          `rgb(${red}, ${green}, ${blue})`;
-
-        context.fillRect(
-          left,
-          top,
-          fontSize,
-          fontSize
-        );
-
-        context.fillStyle =
-          "#fff";
-
-        left += fontSize * 1.4;
-      }
-
       context.fillText(
         line,
-        left,
-        top
+        fontSize * 0.4,
+        fontSize * 0.3 + lineHeight * index
       );
     });
 
