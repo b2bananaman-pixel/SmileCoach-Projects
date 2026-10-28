@@ -178,6 +178,24 @@
         </div>
       </div>
 
+      <div class="card shadow-sm mb-4" data-ai-roleplay-video>
+        <div class="card-body">
+          <h2 class="h4 mb-3">録画データ</h2>
+
+          <% if @ai_roleplay_session.video.attached? %>
+            <%# Active Storageの公開URLを出さず、本人確認を行う専用URLから読み込む %>
+            <%= video_tag video_ai_roleplay_path(@ai_roleplay_session),
+                          controls: true,
+                          preload: "metadata",
+                          class: "w-100 rounded" %>
+          <% else %>
+            <p class="mb-0 text-muted" data-ai-roleplay-video-empty>
+              録画データはありません
+            </p>
+          <% end %>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>

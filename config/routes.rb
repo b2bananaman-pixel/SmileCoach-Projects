@@ -19,6 +19,7 @@ Rails.application.routes.draw do
 
   resources :ai_roleplays, only: [ :create ] do
     get :evaluation, on: :member
+    get :video, on: :member
   end
 
   post "ai_roleplays/synthesize", to: "ai_roleplays#synthesize"
