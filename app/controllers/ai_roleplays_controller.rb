@@ -4,6 +4,12 @@ class AiRoleplaysController < ApplicationController
 
   class InvalidClerkAudioError < StandardError; end
 
+  # 録画の転送先（ストレージの期限付きURL）の有効期限
+  VIDEO_URL_EXPIRES_IN = 30.minutes
+
+  # ローカルDisk保存でも録画の期限付きURLを生成できるように、URL生成用のホスト情報を設定する
+  include ActiveStorage::SetCurrent
+
   before_action :authenticate_user!
   before_action :set_practice_theme, only: [ :show ]
 
@@ -12,12 +18,30 @@ class AiRoleplaysController < ApplicationController
 
   def evaluation
     @ai_roleplay_session = current_user.ai_roleplay_sessions
+                                       .with_attached_video
                                        .includes(:practice_theme, :ai_roleplay_evaluation, practice: :analysis)
                                        .find(params[:id])
     @ai_roleplay_evaluation = @ai_roleplay_session.ai_roleplay_evaluation
 
     # 話し方の分析は接客内容の評価とは別の参考評価として表示する（過去のAIロープレには存在しない）
     @voice_analysis = @ai_roleplay_session.practice&.analysis
+  end
+
+  # 本人のAIロープレであることを確認してから、録画の期限付きURLへ転送する
+  #
+  # Active Storageの公開URL（期限なし）を画面に出さないため、評価画面の動画はこのURLから読み込む。
+  # 転送先のURLは有効期限内であれば誰でも開けるため、ブラウザに保存させず、ログにも出さない。
+  def video
+    ai_roleplay_session = current_user.ai_roleplay_sessions.with_attached_video.find(params[:id])
+
+    return head :not_found unless ai_roleplay_session.video.attached?
+
+    no_store
+
+    # redirect_toは転送先URLをログに出力するため、Locationヘッダーを直接設定する
+    head :found,
+         location: ai_roleplay_session.video.url(expires_in: VIDEO_URL_EXPIRES_IN, disposition: :inline),
+         "Referrer-Policy" => "no-referrer"
   end
 
   def create

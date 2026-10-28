@@ -23,6 +23,8 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  VIDEO_FIXTURE = Rails.root.join("test/fixtures/files/test_volume.webm")
+
   setup do
     @user = users(:one)
   end
@@ -1622,7 +1624,246 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, "ログインユーザー向けのアドバイスです。"
   end
 
+  test "本人の録画URLはストレージの期限付きURLへ302で転送する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    get video_ai_roleplay_path(session)
+
+    assert_response :found
+    assert_match %r{\Ahttp://www\.example\.com/rails/active_storage/disk/}, response.location
+    assert_includes response.location, "ai_roleplay.webm"
+  end
+
+  test "録画の転送レスポンスはブラウザに保存させずリファラーも送らない" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    get video_ai_roleplay_path(session)
+
+    assert_response :found
+    assert_includes response.headers["Cache-Control"], "no-store"
+    assert_equal "no-referrer", response.headers["Referrer-Policy"]
+  end
+
+  test "転送先の期限付きURLから録画を取得でき30分を過ぎると取得できない" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    get video_ai_roleplay_path(session)
+    video_url = response.location
+
+    get video_url
+
+    assert_response :success
+    assert_equal File.binread(VIDEO_FIXTURE), response.body
+
+    travel 29.minutes do
+      get video_url
+
+      assert_response :success
+    end
+
+    travel 31.minutes do
+      get video_url
+
+      assert_response :not_found
+    end
+  end
+
+  test "他のユーザーの録画URLは404を返し転送しない" do
+    sign_in @user
+
+    other_session = ai_roleplay_sessions(:two)
+    attach_video(other_session)
+
+    get video_ai_roleplay_path(other_session)
+
+    assert_response :not_found
+    assert_nil response.headers["Location"]
+  end
+
+  test "録画URLは未ログインの場合ログイン画面へリダイレクトされ動画へ転送しない" do
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    get video_ai_roleplay_path(session)
+
+    assert_redirected_to new_user_session_path
+    assert_not_includes response.location, "active_storage"
+  end
+
+  test "存在しないAIロープレの録画URLは404を返す" do
+    sign_in @user
+
+    get video_ai_roleplay_path(id: 999_999)
+
+    assert_response :not_found
+  end
+
+  test "録画がないAIロープレの録画URLは404を返す" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+
+    assert_not session.video.attached?
+
+    get video_ai_roleplay_path(session)
+
+    assert_response :not_found
+    assert_nil response.headers["Location"]
+  end
+
+  test "録画の転送先URLをログに出力しない" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    log = StringIO.new
+    logger = ActiveSupport::Logger.new(log)
+    original_rails_logger = Rails.logger
+    original_controller_logger = ActionController::Base.logger
+
+    begin
+      Rails.logger = logger
+      ActionController::Base.logger = logger
+
+      get video_ai_roleplay_path(session)
+    ensure
+      Rails.logger = original_rails_logger
+      ActionController::Base.logger = original_controller_logger
+    end
+
+    assert_response :found
+    assert_includes log.string, "AiRoleplaysController#video"
+    assert_not_includes log.string, response.location
+    assert_not_includes log.string, "/rails/active_storage/disk/"
+  end
+
+  test "録画があるAIロープレの評価結果に録画データの動画を表示する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-video]" do
+      assert_select "h2", text: "録画データ"
+      assert_select(
+        "video[src=?][controls][preload=metadata].w-100.rounded",
+        video_ai_roleplay_path(session)
+      )
+      assert_select "[data-ai-roleplay-video-empty]", count: 0
+    end
+  end
+
+  test "録画データのカードは話し方の分析の後に表示する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_operator(
+      response.body.index("data-ai-roleplay-voice-analysis"),
+      :<,
+      response.body.index("data-ai-roleplay-video")
+    )
+  end
+
+  test "録画がないAIロープレの評価結果は録画データがない旨を表示する" do
+    sign_in @user
+
+    get evaluation_ai_roleplay_path(ai_roleplay_sessions(:one))
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-video]" do
+      assert_select "h2", text: "録画データ"
+      assert_select "[data-ai-roleplay-video-empty]", text: "録画データはありません"
+      assert_select "video", count: 0
+    end
+  end
+
+  test "評価結果にActive Storageの期限のない公開URLを出力しない" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+    create_voice_analysis(session)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_select "video", count: 1
+    assert_not_includes response.body, "/rails/active_storage/"
+    assert_not_includes response.body, session.video.blob.signed_id
+  end
+
+  test "接客内容の評価も話し方の分析もない過去のAIロープレでも録画データを表示する" do
+    sign_in @user
+
+    session = AiRoleplaySession.create!(
+      user: @user,
+      practice_theme: practice_themes(:one),
+      created_at: 30.days.ago
+    )
+    attach_video(session)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_select "p", text: "このロープレの評価結果はありません。"
+    assert_select "[data-ai-roleplay-voice-analysis-empty]", text: "話し方の分析結果はありません"
+    assert_select "[data-ai-roleplay-video] video[src=?]", video_ai_roleplay_path(session)
+  end
+
+  test "評価結果の録画は添付情報を一括で読み込む" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    queries = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+      queries << payload[:sql] unless payload[:name] == "SCHEMA"
+    end
+
+    begin
+      get evaluation_ai_roleplay_path(session)
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+    end
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-video] video", count: 1
+
+    attachment_queries = queries.select { |sql| sql.match?(/FROM "active_storage_(attachments|blobs)"/) }
+
+    assert_not_empty attachment_queries
+    # 遅延読み込みで付くLIMITがなく、with_attached_videoで一括読み込みしていることを確認する
+    attachment_queries.each { |sql| assert_no_match(/LIMIT/, sql) }
+  end
+
   private
+
+  def attach_video(session)
+    session.video.attach(
+      io: StringIO.new(File.binread(VIDEO_FIXTURE)),
+      filename: "ai_roleplay.webm",
+      content_type: "video/webm"
+    )
+  end
 
   def create_voice_analysis(session, **attributes)
     practice = Practice.create!(
