@@ -4,5 +4,6 @@ class AiRoleplaySession < ApplicationRecord
 
   has_many :ai_roleplay_messages, dependent: :destroy
   has_one :ai_roleplay_evaluation, dependent: :destroy
+  has_one :practice, dependent: :destroy
   has_one_attached :video
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_10_013404) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_25_143000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -124,6 +124,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_10_013404) do
     t.datetime "updated_at", null: false
     t.text "transcription"
     t.float "duration"
+    t.bigint "ai_roleplay_session_id"
+    t.index ["ai_roleplay_session_id"], name: "index_practices_on_ai_roleplay_session_id", unique: true
     t.index ["practice_theme_id"], name: "index_practices_on_practice_theme_id"
     t.index ["user_id"], name: "index_practices_on_user_id"
   end
@@ -148,6 +150,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_10_013404) do
   add_foreign_key "ai_roleplay_sessions", "practice_themes"
   add_foreign_key "ai_roleplay_sessions", "users"
   add_foreign_key "analyses", "practices"
+  add_foreign_key "practices", "ai_roleplay_sessions"
   add_foreign_key "practices", "practice_themes"
   add_foreign_key "practices", "users"
 end

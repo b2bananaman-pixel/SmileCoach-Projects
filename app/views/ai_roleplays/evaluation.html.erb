@@ -116,6 +116,68 @@
         </div>
       <% end %>
 
+      <div class="card shadow-sm mb-4" data-ai-roleplay-voice-analysis>
+        <div class="card-body">
+          <h2 class="h4 mb-2">話し方の分析（参考）</h2>
+
+          <p class="text-muted small mb-4">
+            あなたの発話音声から分析した参考値です。接客内容の評価とは別に、項目ごとに表示しています。
+          </p>
+
+          <% if @voice_analysis.present? %>
+            <div class="border rounded p-3 mb-3" data-ai-roleplay-voice-analysis-item="speech_speed">
+              <div class="d-flex justify-content-between align-items-center">
+                <h3 class="h5 mb-0">話速</h3>
+                <span class="fw-bold" data-ai-roleplay-voice-analysis-score>
+                  <%= @voice_analysis.speech_speed_score.nil? ? "-" : "#{@voice_analysis.speech_speed_score}点" %>
+                </span>
+              </div>
+
+              <p class="mb-0 mt-2" data-ai-roleplay-voice-analysis-value>
+                <%= number_with_precision(@voice_analysis.speech_speed, precision: 2) %> 文字/秒
+              </p>
+            </div>
+
+            <div class="border rounded p-3 mb-3" data-ai-roleplay-voice-analysis-item="filler">
+              <div class="d-flex justify-content-between align-items-center">
+                <h3 class="h5 mb-0">フィラー</h3>
+                <span class="fw-bold" data-ai-roleplay-voice-analysis-score>
+                  <%= @voice_analysis.filler_score.nil? ? "-" : "#{@voice_analysis.filler_score}点" %>
+                </span>
+              </div>
+
+              <p class="mb-0 mt-2" data-ai-roleplay-voice-analysis-value>
+                フィラー回数：<%= @voice_analysis.filler_count %>回
+              </p>
+            </div>
+
+            <div class="border rounded p-3" data-ai-roleplay-voice-analysis-item="volume">
+              <div class="d-flex justify-content-between align-items-center">
+                <h3 class="h5 mb-0">声量</h3>
+                <span class="fw-bold" data-ai-roleplay-voice-analysis-score>
+                  <%= @voice_analysis.volume_score.nil? ? "-" : "#{@voice_analysis.volume_score}点" %>
+                </span>
+              </div>
+
+              <p class="mb-0 mt-2" data-ai-roleplay-voice-analysis-value>
+                声量：<%= number_with_precision(@voice_analysis.volume, precision: 1) %> dB
+              </p>
+            </div>
+
+            <% if @voice_analysis.ai_comment.present? %>
+              <div class="mt-4" data-ai-roleplay-voice-analysis-advice>
+                <p class="fw-bold mb-1">改善アドバイス</p>
+                <p class="mb-0"><%= @voice_analysis.ai_comment %></p>
+              </div>
+            <% end %>
+          <% else %>
+            <p class="mb-0 text-muted" data-ai-roleplay-voice-analysis-empty>
+              話し方の分析結果はありません
+            </p>
+          <% end %>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>

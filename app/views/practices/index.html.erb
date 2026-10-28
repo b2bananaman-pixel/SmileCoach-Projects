@@ -8,55 +8,99 @@
     </div>
   </div>
 
-  <% if @practices.empty? %>
+  <% if @history_items.empty? %>
     <div class="alert alert-info">
       まだ練習履歴がありません。
     </div>
   <% else %>
     <div class="list-group">
-      <% @practices.each do |practice| %>
-        <div class="list-group-item mb-3">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h2 class="h5 mb-0">
-              <%= practice.practice_theme.name %>
-            </h2>
+      <% @history_items.each do |item| %>
+        <% if item.is_a?(AiRoleplaySession) %>
+          <% ai_roleplay_session = item %>
 
-            <span>
-              <%= practice.created_at.strftime("%Y/%m/%d %H:%M") %>
-            </span>
-          </div>
+          <div
+            class="list-group-item mb-3"
+            data-practice-history-item="ai_roleplay"
+            data-ai-roleplay-session-id="<%= ai_roleplay_session.id %>"
+          >
+            <span class="badge bg-success mb-2" data-practice-history-type>AIロープレ</span>
 
-          <p class="mb-2">
-            総合スコア：
-            <strong>
-              <%= practice.analysis&.total_score || "未取得" %>点
-            </strong>
-          </p>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h2 class="h5 mb-0">
+                <%= ai_roleplay_session.practice_theme.name %>
+              </h2>
 
-          <% if practice.audio.attached? %>
-            <div class="mb-3">
-              <h3 class="h6">録音データ</h3>
-
-              <%= audio_tag url_for(practice.audio),
-                            controls: true,
-                            class: "w-100 mb-2" %>
-
-              <%= button_to "録音データを削除",
-                            audio_practice_path(practice),
-                            method: :delete,
-                            class: "btn btn-outline-danger",
-                            data: {
-                              turbo_confirm: "録音データを削除しますか？\n※練習履歴と分析結果は残ります。"
-                            } %>
+              <span>
+                <%= ai_roleplay_session.created_at.strftime("%Y/%m/%d %H:%M") %>
+              </span>
             </div>
-          <% end %>
 
-          <% if practice.analysis.present? %>
-            <%= link_to "分析結果を見る",
-                        analysis_path(practice.analysis),
+            <p class="mb-1">
+              接客内容の評価：
+              <strong data-ai-roleplay-history-evaluation>
+                <%= ai_roleplay_session.ai_roleplay_evaluation.present? ? "評価済み" : "評価なし" %>
+              </strong>
+            </p>
+
+            <p class="mb-3">
+              話し方の分析：
+              <strong data-ai-roleplay-history-voice-analysis>
+                <%= ai_roleplay_session.practice&.analysis.present? ? "分析済み" : "分析結果なし" %>
+              </strong>
+            </p>
+
+            <%= link_to "評価結果を見る",
+                        evaluation_ai_roleplay_path(ai_roleplay_session),
                         class: "btn btn-primary" %>
-          <% end %>
-        </div>
+          </div>
+        <% else %>
+          <% practice = item %>
+
+          <div class="list-group-item mb-3" data-practice-history-item="practice">
+            <span class="badge bg-secondary mb-2" data-practice-history-type>通常録画</span>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h2 class="h5 mb-0">
+                <%= practice.practice_theme.name %>
+              </h2>
+
+              <span>
+                <%= practice.created_at.strftime("%Y/%m/%d %H:%M") %>
+              </span>
+            </div>
+
+            <p class="mb-2">
+              総合スコア：
+              <strong>
+                <%= practice.analysis&.total_score || "未取得" %>点
+              </strong>
+            </p>
+
+            <% if practice.audio.attached? %>
+              <div class="mb-3">
+                <h3 class="h6">録音データ</h3>
+
+                <%= audio_tag url_for(practice.audio),
+                              controls: true,
+                              class: "w-100 mb-2" %>
+
+                <%= button_to "録音データを削除",
+                              audio_practice_path(practice),
+                              method: :delete,
+                              class: "btn btn-outline-danger",
+                              data: {
+                                turbo_confirm: "録音データを削除しますか？\n※練習履歴と分析結果は残ります。"
+                              } %>
+              </div>
+            <% end %>
+
+            <% if practice.analysis.present? %>
+              <%= link_to "分析結果を見る",
+                          analysis_path(practice.analysis),
+                          class: "btn btn-primary" %>
+            <% end %>
+          </div>
+        <% end %>
       <% end %>
     </div>
   <% end %>

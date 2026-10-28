@@ -1,4 +1,9 @@
 class AiRoleplaysController < ApplicationController
+  # 発話音声として受け付ける形式（MediaRecorderの音声録音形式）
+  CLERK_AUDIO_CONTENT_TYPE = "audio/webm".freeze
+
+  class InvalidClerkAudioError < StandardError; end
+
   before_action :authenticate_user!
   before_action :set_practice_theme, only: [ :show ]
 
@@ -7,9 +12,12 @@ class AiRoleplaysController < ApplicationController
 
   def evaluation
     @ai_roleplay_session = current_user.ai_roleplay_sessions
-                                       .includes(:practice_theme, :ai_roleplay_evaluation)
+                                       .includes(:practice_theme, :ai_roleplay_evaluation, practice: :analysis)
                                        .find(params[:id])
     @ai_roleplay_evaluation = @ai_roleplay_session.ai_roleplay_evaluation
+
+    # 話し方の分析は接客内容の評価とは別の参考評価として表示する（過去のAIロープレには存在しない）
+    @voice_analysis = @ai_roleplay_session.practice&.analysis
   end
 
   def create
@@ -38,6 +46,9 @@ class AiRoleplaysController < ApplicationController
     end
 
     evaluate_ai_roleplay(ai_roleplay_session)
+
+    # 発話音声のアップロードはコミット後に行われるため、保存のトランザクションが完了してから分析する
+    analyze_clerk_voice(ai_roleplay_session)
 
     render json: {
       id: ai_roleplay_session.id
@@ -167,6 +178,57 @@ class AiRoleplaysController < ApplicationController
     Rails.logger.error(
       "[AiRoleplaysController#create] AI roleplay evaluation failed: #{e.class}"
     )
+  end
+
+  # 話し方の音声分析は接客内容の評価とは別の補助評価のため、失敗してもセッション保存は成功扱いとする
+  def analyze_clerk_voice(ai_roleplay_session)
+    AiRoleplayVoiceAnalysisService.new(
+      ai_roleplay_session: ai_roleplay_session,
+      audio_files: clerk_audio_turns
+    ).call
+  rescue InvalidClerkAudioError, ClerkAudioConcatenator::InvalidInputError => e
+    # 入力検証のメッセージは固定文と件数・上限値のみで構成され、発話内容やファイル名を含まない
+    Rails.logger.warn(
+      "[AiRoleplaysController#create] AI roleplay voice analysis skipped: #{e.class} (#{e.message})"
+    )
+  rescue StandardError => e
+    # ffmpegや分析処理のエラー内容は記録せず、クラス名のみ記録する
+    Rails.logger.error(
+      "[AiRoleplaysController#create] AI roleplay voice analysis failed: #{e.class}"
+    )
+  end
+
+  # 件数・1件あたりのサイズ・合計サイズの上限は ClerkAudioConcatenator で、
+  # 会話履歴の発言数との一致は AiRoleplayVoiceAnalysisService で確認する
+  def clerk_audio_turns
+    turns = params[:clerk_audio_turns]
+
+    return [] if turns.nil?
+
+    raise InvalidClerkAudioError, "発話音声の形式が不正です" unless turns.is_a?(Array)
+
+    if turns.size > ClerkAudioConcatenator::MAX_FILES
+      raise InvalidClerkAudioError,
+            "発話音声の数が多すぎます（上限#{ClerkAudioConcatenator::MAX_FILES}件）"
+    end
+
+    turns.each_with_index do |turn, index|
+      unless turn.is_a?(ActionDispatch::Http::UploadedFile)
+        raise InvalidClerkAudioError, "#{index + 1}件目の発話音声がファイルではありません"
+      end
+
+      unless clerk_audio_content_type?(turn.content_type)
+        raise InvalidClerkAudioError, "#{index + 1}件目の発話音声の形式が不正です"
+      end
+    end
+
+    turns
+  end
+
+  # MediaRecorderは "audio/webm;codecs=opus" のようにパラメータ付きで送るため、種類だけを比較する
+  # 申告された形式は改ざんできるため、中身が正しいWebMかどうかは結合時にffmpegで確認する
+  def clerk_audio_content_type?(content_type)
+    content_type.to_s.split(";").first.to_s.strip.casecmp?(CLERK_AUDIO_CONTENT_TYPE)
   end
 
   def parsed_conversation_history
