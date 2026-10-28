@@ -1,4 +1,6 @@
 class CreatePracticeService
+  include AnalysisPerformanceMeasurement
+
   def initialize(user:, practice_theme:, audio:, duration:, video: nil)
     @user = user
     @practice_theme = practice_theme
@@ -22,66 +24,7 @@ class CreatePracticeService
       practice.update!(transcription: transcription)
     end
 
-    volume = measure("声量分析") do
-      VolumeAnalysis.new(practice.audio).volume
-    end
-
-    speech_duration = measure("発話時間分析") do
-      SpeechDurationAnalysis.new(
-        practice.audio,
-        duration: practice.duration
-      ).speech_duration
-    end
-
-    speech_speed = nil
-    filler_count = nil
-    filler_score = nil
-
-    measure("話速・フィラー分析") do
-      speech_analysis = SpeechAnalysis.new(
-        transcription: practice.transcription,
-        duration: practice.duration,
-        speech_duration: speech_duration
-      )
-
-      speech_speed = speech_analysis.speech_speed
-      filler_count = speech_analysis.filler_count
-      filler_score = speech_analysis.filler_score
-    end
-
-    score_analysis = measure("スコア計算") do
-      ScoreAnalysis.new(
-        speech_speed: speech_speed,
-        volume: volume,
-        filler_score: filler_score
-      )
-    end
-
-    analysis = measure("Analysis保存") do
-      practice.create_analysis!(
-        volume: volume,
-        volume_score: score_analysis.volume_score,
-        speech_speed: speech_speed,
-        speech_speed_score: score_analysis.speech_speed_score,
-        filler_count: filler_count,
-        total_score: score_analysis.total_score,
-        filler_score: filler_score
-      )
-    end
-
-    begin
-      ai_comment = measure("AIコメント生成") do
-        AiCommentService.new(analysis).call
-      end
-
-      measure("AIコメント保存") do
-        analysis.update!(ai_comment: ai_comment)
-      end
-    rescue StandardError => e
-      Rails.logger.error(
-        "AIコメント生成に失敗しました: #{e.class}"
-      )
-    end
+    PracticeAnalysisService.new(practice).call
 
     log_duration(
       "サーバー分析合計",
@@ -127,27 +70,5 @@ class CreatePracticeService
   def transcribe(practice)
     result = GroqTranscriptionService.new(practice.audio).call
     result["text"]
-  end
-
-  def measure(label)
-    started_at = monotonic_time
-    result = yield
-
-    log_duration(
-      label,
-      monotonic_time - started_at
-    )
-
-    result
-  end
-
-  def log_duration(label, seconds)
-    Rails.logger.info(
-      "[AnalysisPerformance] #{label}: #{format('%.2f', seconds)}秒"
-    )
-  end
-
-  def monotonic_time
-    Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
 end

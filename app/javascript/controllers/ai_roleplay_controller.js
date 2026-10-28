@@ -27,6 +27,13 @@ export default class extends Controller {
     practiceThemeId: Number
   }
 
+  // サーバー側（ClerkAudioConcatenator）と同じ発話音声の上限
+  static clerkAudioLimits = {
+    maxFiles: 100,
+    maxFileSize: 10 * 1024 * 1024,
+    maxTotalSize: 30 * 1024 * 1024
+  }
+
   connect() {
     this.mediaStream = null
     this.recordingStream = null
@@ -43,6 +50,7 @@ export default class extends Controller {
 
     this.turnRecorder = null
     this.turnChunks = []
+    this.clerkAudioTurns = []
 
     this.countdownTimer = null
     this.roleplayTimer = null
@@ -50,6 +58,7 @@ export default class extends Controller {
     this.remainingSeconds = 10 * 60
     this.roleplayStarted = false
     this.roleplayEnded = false
+    this.roleplaySaveStarted = false
     this.disconnecting = false
 
     this.turnProcessing = false
@@ -62,6 +71,7 @@ export default class extends Controller {
     this.disconnecting = true
     this.roleplayEnded = true
     this.turnProcessing = false
+    this.clerkAudioTurns = []
 
     this.clearCountdownTimer()
     this.clearRoleplayTimer()
@@ -521,7 +531,8 @@ export default class extends Controller {
 
       this.addConversationTurn(
         transcription,
-        aiResponse.reply
+        aiResponse.reply,
+        audioBlob
       )
 
       this.setStatus(
@@ -597,7 +608,8 @@ export default class extends Controller {
 
   addConversationTurn(
     clerkMessage,
-    aiReply
+    aiReply,
+    clerkAudioBlob
   ) {
     this.conversationHistory.push(
       {
@@ -608,6 +620,11 @@ export default class extends Controller {
         role: "assistant",
         content: aiReply
       }
+    )
+
+    // 会話履歴の利用者の発言と同じ順番・同じ件数になるよう、履歴への追加と同時に発話音声を保持する
+    this.clerkAudioTurns.push(
+      clerkAudioBlob
     )
   }
 
@@ -828,9 +845,15 @@ export default class extends Controller {
   }
 
   async handleRoleplayRecordingStopped() {
-    if (this.disconnecting) {
+    if (
+      this.disconnecting ||
+      this.roleplaySaveStarted
+    ) {
       return
     }
+
+    // 録画の停止通知が重複しても、保存リクエストは1回だけ送信する
+    this.roleplaySaveStarted = true
 
     const mimeType =
       this.roleplayRecorder?.mimeType ||
@@ -1338,6 +1361,15 @@ export default class extends Controller {
       )
     )
 
+    this.sendableClerkAudioTurns()
+      .forEach((audioBlob, index) => {
+        formData.append(
+          "clerk_audio_turns[]",
+          audioBlob,
+          `ai_roleplay_clerk_turn_${index + 1}.webm`
+        )
+      })
+
     const response =
       await fetch(
         this.saveUrlValue,
@@ -1361,6 +1393,80 @@ export default class extends Controller {
     }
 
     return body
+  }
+
+  // 話し方の分析は補助評価のため、送信条件を満たさない場合は発話音声を送らず、会話と接客評価の保存を優先する
+  sendableClerkAudioTurns() {
+    const audioTurns =
+      this.clerkAudioTurns
+
+    const limits =
+      this.constructor.clerkAudioLimits
+
+    const clerkMessageCount =
+      this.conversationHistory.filter(
+        (message) => message.role === "user"
+      ).length
+
+    if (audioTurns.length === 0) {
+      return []
+    }
+
+    if (audioTurns.length !== clerkMessageCount) {
+      console.warn(
+        "発話音声と会話履歴の件数が一致しないため、発話音声を送信しません"
+      )
+      return []
+    }
+
+    if (audioTurns.length > limits.maxFiles) {
+      console.warn(
+        "発話音声の件数が上限を超えたため、発話音声を送信しません"
+      )
+      return []
+    }
+
+    const invalidAudio =
+      audioTurns.some((audioBlob) => {
+        return (
+          !audioBlob ||
+          audioBlob.size === 0 ||
+          audioBlob.size > limits.maxFileSize ||
+          !this.isWebmAudio(audioBlob.type)
+        )
+      })
+
+    if (invalidAudio) {
+      console.warn(
+        "送信できない発話音声が含まれるため、発話音声を送信しません"
+      )
+      return []
+    }
+
+    const totalSize =
+      audioTurns.reduce(
+        (sum, audioBlob) => sum + audioBlob.size,
+        0
+      )
+
+    if (totalSize > limits.maxTotalSize) {
+      console.warn(
+        "発話音声の合計サイズが上限を超えたため、発話音声を送信しません"
+      )
+      return []
+    }
+
+    return audioTurns
+  }
+
+  // MediaRecorderは "audio/webm;codecs=opus" のように付加情報付きの形式を返すため、種類だけを比較する
+  isWebmAudio(type) {
+    return (
+      (type || "")
+        .split(";")[0]
+        .trim()
+        .toLowerCase() === "audio/webm"
+    )
   }
 
   async parseJson(response) {

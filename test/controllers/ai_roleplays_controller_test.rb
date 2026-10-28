@@ -1,4 +1,5 @@
 require "test_helper"
+require "open3"
 
 class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
   # 実際のGroq APIへ通信せず、指定したレスポンスを返すHTTPクライアント
@@ -1053,7 +1054,670 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to new_user_session_path
   end
 
+  test "発話音声付きでAIロープレを保存すると接客評価と話し方の分析結果を保存する" do
+    sign_in @user
+
+    conversation_history = two_turn_conversation_history
+
+    stub_saved_ai_roleplay_evaluation do
+      stub_ai_comment do
+        assert_difference(
+          [ "AiRoleplaySession.count", "AiRoleplayEvaluation.count", "Practice.count", "Analysis.count" ],
+          1
+        ) do
+          assert_difference("AiRoleplayMessage.count", 4) do
+            post_ai_roleplay(
+              conversation_history: conversation_history,
+              clerk_audio_turns: [ clerk_audio, clerk_audio("speech_duration_long_pause.webm") ]
+            )
+          end
+        end
+      end
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+
+    assert_equal({ "id" => session.id }, response.parsed_body)
+    assert_not_nil session.ai_roleplay_evaluation
+
+    practice = session.practice
+
+    assert practice.audio.attached?
+    assert_equal "ai_roleplay_clerk_audio.webm", practice.audio.filename.to_s
+    assert_operator practice.duration, :>, 5.0
+    assert_equal(
+      conversation_history.select { |message| message[:role] == "user" }.pluck(:content).join("\n"),
+      practice.transcription
+    )
+    assert_not_includes practice.transcription, "今は他社の光回線を使っています。"
+
+    analysis = practice.analysis
+
+    assert_not_nil analysis.speech_speed_score
+    assert_not_nil analysis.filler_score
+    assert_not_nil analysis.volume_score
+    assert_nil analysis.smile_score
+  end
+
+  test "話し方の分析結果は今回保存したセッションとログインユーザーに関連付く" do
+    sign_in @user
+
+    stub_saved_ai_roleplay_evaluation do
+      stub_ai_comment do
+        post_ai_roleplay(clerk_audio_turns: [ clerk_audio ])
+      end
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+    practice = Practice.find_by!(ai_roleplay_session: session)
+
+    assert_equal session, practice.ai_roleplay_session
+    assert_equal practice, session.practice
+    assert_equal @user, practice.user
+    assert_equal session.practice_theme, practice.practice_theme
+
+    assert_nil ai_roleplay_sessions(:one).practice
+    assert_nil ai_roleplay_sessions(:two).practice
+  end
+
+  test "発話音声がない場合も接客評価を保存し話し方の分析は行わない" do
+    sign_in @user
+
+    stub_saved_ai_roleplay_evaluation do
+      assert_difference([ "AiRoleplaySession.count", "AiRoleplayEvaluation.count" ], 1) do
+        assert_no_difference([ "Practice.count", "Analysis.count" ]) do
+          post_ai_roleplay
+        end
+      end
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+
+    assert_equal({ "id" => session.id }, response.parsed_body)
+    assert_nil session.practice
+  end
+
+  test "発話音声が破損したWebMの場合も接客評価を保存し201を返す" do
+    sign_in @user
+
+    logged_messages = []
+
+    stub_saved_ai_roleplay_evaluation do
+      Rails.logger.stub(:error, ->(message = nil) { logged_messages << message.to_s }) do
+        assert_no_voice_analysis_saved do
+          post_ai_roleplay(clerk_audio_turns: [ clerk_audio("test_audio.webm") ])
+        end
+      end
+    end
+
+    assert_response :created
+    assert_not_nil AiRoleplaySession.find(response.parsed_body["id"]).ai_roleplay_evaluation
+
+    assert_equal(
+      [ "[AiRoleplaysController#create] AI roleplay voice analysis failed: ClerkAudioConcatenator::ConversionError" ],
+      logged_messages
+    )
+  end
+
+  test "発話音声の送信形式が不正な場合も接客評価を保存し201を返す" do
+    sign_in @user
+
+    invalid_turns = {
+      "配列ではない" => -> { clerk_audio },
+      "ファイルではない" => -> { [ "fake audio" ] },
+      "音声以外の形式" => -> { [ clerk_audio("test_volume.webm", "text/plain") ] },
+      "キー付きのハッシュ" => -> { { "0" => clerk_audio } }
+    }
+
+    invalid_turns.each do |label, build_turns|
+      logged_messages = []
+
+      stub_saved_ai_roleplay_evaluation do
+        Rails.logger.stub(:warn, ->(message = nil) { logged_messages << message.to_s }) do
+          assert_no_voice_analysis_saved do
+            assert_difference("AiRoleplayEvaluation.count", 1) do
+              post_ai_roleplay(clerk_audio_turns: build_turns.call)
+            end
+          end
+        end
+      end
+
+      assert_response :created, label
+      assert(
+        logged_messages.any? do |message|
+          message.start_with?(
+            "[AiRoleplaysController#create] AI roleplay voice analysis skipped: " \
+            "AiRoleplaysController::InvalidClerkAudioError"
+          )
+        end,
+        "#{label}の場合に入力検証のログが出力されていません"
+      )
+    end
+  end
+
+  test "発話音声の件数・1件あたりのサイズ・合計サイズが上限を超える場合は分析せず201を返す" do
+    sign_in @user
+
+    conversation_history = two_turn_conversation_history
+
+    limits = {
+      "件数" => [ :MAX_FILES, 1, "AiRoleplaysController::InvalidClerkAudioError" ],
+      "1件あたりのサイズ" => [ :MAX_FILE_SIZE, 1, "ClerkAudioConcatenator::InvalidInputError" ],
+      "合計サイズ" => [ :MAX_TOTAL_SIZE, File.size(file_fixture("test_volume.webm")) + 1, "ClerkAudioConcatenator::InvalidInputError" ]
+    }
+
+    limits.each do |label, (const_name, value, error_class)|
+      logged_messages = []
+
+      with_stubbed_concatenator_const(const_name, value) do
+        stub_saved_ai_roleplay_evaluation do
+          Open3.stub(:capture3, ->(*_args) { flunk "#{label}の上限超過時にffmpegを実行しないこと" }) do
+            Rails.logger.stub(:warn, ->(message = nil) { logged_messages << message.to_s }) do
+              assert_no_voice_analysis_saved do
+                assert_difference("AiRoleplayEvaluation.count", 1) do
+                  post_ai_roleplay(
+                    conversation_history: conversation_history,
+                    clerk_audio_turns: [ clerk_audio, clerk_audio ]
+                  )
+                end
+              end
+            end
+          end
+        end
+      end
+
+      assert_response :created, label
+      assert(
+        logged_messages.any? { |message| message.include?("voice analysis skipped: #{error_class}") },
+        "#{label}の上限超過のログが出力されていません"
+      )
+    end
+  end
+
+  test "話し方の分析サービスが例外を出しても接客評価を保存しログには例外クラスだけを出す" do
+    sign_in @user
+
+    original_api_key = ENV["GROQ_API_KEY"]
+    ENV["GROQ_API_KEY"] = "test-api-key"
+
+    voice_analysis_service = Object.new
+
+    def voice_analysis_service.call
+      raise "分析に失敗: 現在インターネットは何をご利用ですか？ test-api-key"
+    end
+
+    logged_messages = []
+
+    stub_saved_ai_roleplay_evaluation do
+      AiRoleplayVoiceAnalysisService.stub(:new, ->(**_args) { voice_analysis_service }) do
+        Rails.logger.stub(:error, ->(message = nil) { logged_messages << message.to_s }) do
+          assert_difference([ "AiRoleplaySession.count", "AiRoleplayEvaluation.count" ], 1) do
+            assert_no_difference([ "Practice.count", "Analysis.count" ]) do
+              post_ai_roleplay(clerk_audio_turns: [ clerk_audio ])
+            end
+          end
+        end
+      end
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+
+    assert_equal({ "id" => session.id }, response.parsed_body)
+    assert_equal(
+      roleplay_conversation_history.pluck(:content),
+      session.ai_roleplay_messages.order(:id).pluck(:content)
+    )
+
+    assert_equal(
+      [ "[AiRoleplaysController#create] AI roleplay voice analysis failed: RuntimeError" ],
+      logged_messages
+    )
+    assert_not_includes logged_messages.join("\n"), "インターネット"
+    assert_not_includes logged_messages.join("\n"), "test-api-key"
+  ensure
+    ENV["GROQ_API_KEY"] = original_api_key
+  end
+
+  test "接客内容の評価に失敗しても話し方の分析は実行する" do
+    sign_in @user
+
+    evaluation_service = Object.new
+
+    def evaluation_service.call
+      raise "Groq API request failed"
+    end
+
+    AiRoleplayEvaluationService.stub(:new, ->(_session) { evaluation_service }) do
+      stub_ai_comment do
+        assert_no_difference("AiRoleplayEvaluation.count") do
+          assert_difference([ "Practice.count", "Analysis.count" ], 1) do
+            post_ai_roleplay(clerk_audio_turns: [ clerk_audio ])
+          end
+        end
+      end
+    end
+
+    assert_response :created
+  end
+
+  test "発言数と発話音声数が一致せず話し方の分析をスキップした場合も正常に応答する" do
+    sign_in @user
+
+    logged_messages = []
+
+    stub_saved_ai_roleplay_evaluation do
+      Open3.stub(:capture3, ->(*_args) { flunk "ffmpegを実行しないこと" }) do
+        Rails.logger.stub(:info, ->(message = nil) { logged_messages << message.to_s }) do
+          assert_no_voice_analysis_saved do
+            post_ai_roleplay(clerk_audio_turns: [ clerk_audio, clerk_audio ])
+          end
+        end
+      end
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+
+    assert_equal({ "id" => session.id }, response.parsed_body)
+    assert_not_nil session.ai_roleplay_evaluation
+    assert(
+      logged_messages.any? { |message| message.include?("発言数（1件）と発話音声数（2件）が一致しません") }
+    )
+  end
+
+  test "話し方の分析結果はセッションごとに1件だけ作成され重複しない" do
+    sign_in @user
+
+    session_ids = []
+
+    stub_saved_ai_roleplay_evaluation do
+      stub_ai_comment do
+        assert_difference([ "Practice.count", "Analysis.count" ], 2) do
+          2.times do
+            post_ai_roleplay(clerk_audio_turns: [ clerk_audio ])
+            assert_response :created
+            session_ids << response.parsed_body["id"]
+          end
+        end
+      end
+    end
+
+    assert_equal 2, session_ids.uniq.size
+    session_ids.each do |session_id|
+      assert_equal 1, Practice.where(ai_roleplay_session_id: session_id).count
+    end
+
+    session = AiRoleplaySession.find(session_ids.first)
+
+    File.open(file_fixture("test_volume.webm"), "rb") do |file|
+      assert_no_difference([ "Practice.count", "Analysis.count" ]) do
+        assert_nil AiRoleplayVoiceAnalysisService.new(ai_roleplay_session: session, audio_files: [ file ]).call
+      end
+    end
+  end
+
+  test "未ログインの場合は発話音声付きでも保存も分析も行わない" do
+    assert_no_difference([ "AiRoleplaySession.count", "AiRoleplayEvaluation.count" ]) do
+      assert_no_voice_analysis_saved do
+        post_ai_roleplay(clerk_audio_turns: [ clerk_audio ])
+      end
+    end
+
+    assert_redirected_to new_user_session_path
+  end
+
+  test "話し方の分析を行ったAIロープレの評価結果は他のユーザーから参照できない" do
+    sign_in @user
+
+    stub_saved_ai_roleplay_evaluation do
+      stub_ai_comment do
+        post_ai_roleplay(clerk_audio_turns: [ clerk_audio ])
+      end
+    end
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+
+    assert_not_nil session.practice
+
+    sign_out @user
+    sign_in users(:two)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :not_found
+  end
+
+  test "AIロープレ評価結果に接客内容の評価5項目と話し方の分析3項目を分けて表示する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+
+    ai_roleplay_evaluations(:one).update!(
+      hearing_score: 1,
+      listening_score: 2,
+      needs_score: 3,
+      proposal_score: 4,
+      closing_score: 5
+    )
+
+    create_voice_analysis(session)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+
+    {
+      "hearing" => "20点",
+      "listening" => "40点",
+      "needs" => "60点",
+      "proposal" => "80点",
+      "closing" => "100点"
+    }.each do |category, points|
+      assert_select(
+        "[data-ai-roleplay-evaluation-category=\"#{category}\"] [data-ai-roleplay-evaluation-points]",
+        text: points
+      )
+    end
+
+    assert_select "[data-ai-roleplay-voice-analysis]" do
+      assert_select "h2", text: "話し方の分析（参考）"
+      assert_select "[data-ai-roleplay-voice-analysis-item]", count: 3
+      assert_select "[data-ai-roleplay-evaluation-category]", count: 0
+      assert_select "[data-ai-roleplay-voice-analysis-empty]", count: 0
+    end
+
+    {
+      "speech_speed" => [ "話速", "83点", "7.25 文字/秒" ],
+      "filler" => [ "フィラー", "64点", "フィラー回数：3回" ],
+      "volume" => [ "声量", "91点", "声量：-21.3 dB" ]
+    }.each do |item, (label, score, value)|
+      assert_select "[data-ai-roleplay-voice-analysis-item=\"#{item}\"]" do
+        assert_select "h3", text: label
+        assert_select "[data-ai-roleplay-voice-analysis-score]", text: score
+        assert_select "[data-ai-roleplay-voice-analysis-value]", text: value
+      end
+    end
+
+    # 接客内容の評価の後に話し方の分析を表示する
+    body = response.body
+    assert_operator(
+      body.index("data-ai-roleplay-evaluation-category=\"closing\""),
+      :<,
+      body.index("data-ai-roleplay-voice-analysis-item=\"speech_speed\"")
+    )
+  end
+
+  test "話し方の分析は総合スコアを表示せず接客内容の評価点と合算しない" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+
+    ai_roleplay_evaluations(:one).update!(
+      hearing_score: 1,
+      listening_score: 2,
+      needs_score: 3,
+      proposal_score: 4,
+      closing_score: 5
+    )
+
+    create_voice_analysis(session, total_score: 987)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+
+    page_text = css_select("body").text
+    voice_text = css_select("[data-ai-roleplay-voice-analysis]").text
+
+    assert_not_includes page_text, "987"
+    assert_not_includes page_text, "総合スコア"
+    assert_not_includes voice_text, "総合"
+    assert_not_includes voice_text, "合計"
+
+    # 接客内容の5項目（300点）と話し方の3項目（238点）を合算・平均した値を表示しない
+    [ "538", "67", "238" ].each do |combined|
+      assert_not_includes page_text, "#{combined}点"
+    end
+
+    assert_select(
+      '[data-ai-roleplay-evaluation-category="hearing"] [data-ai-roleplay-evaluation-points]',
+      text: "20点"
+    )
+    assert_select "[data-ai-roleplay-voice-analysis-score]", count: 3
+  end
+
+  test "話し方の分析のAIコメントを改善アドバイスとして表示する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    create_voice_analysis(session, ai_comment: "語尾まではっきり話すと、より伝わりやすくなります。")
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-voice-analysis-advice]" do
+      assert_select "p", text: "改善アドバイス"
+      assert_select "p", text: "語尾まではっきり話すと、より伝わりやすくなります。"
+    end
+  end
+
+  test "話し方の分析のAIコメントがない場合は改善アドバイスを表示しない" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    create_voice_analysis(session, ai_comment: nil)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-voice-analysis-item]", count: 3
+    assert_select "[data-ai-roleplay-voice-analysis-advice]", count: 0
+  end
+
+  test "音声分析のない過去のAIロープレは接客内容の評価と分析結果がない旨を表示する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+
+    assert_nil session.practice
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-evaluation-category]", count: 5
+    assert_select "h2", text: "総合的な強み"
+    assert_select "[data-ai-roleplay-voice-analysis]" do
+      assert_select "h2", text: "話し方の分析（参考）"
+      assert_select "[data-ai-roleplay-voice-analysis-empty]", text: "話し方の分析結果はありません"
+      assert_select "[data-ai-roleplay-voice-analysis-item]", count: 0
+    end
+  end
+
+  test "音声分析用のPracticeにAnalysisがない場合も分析結果がない旨を表示する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    Practice.create!(user: @user, practice_theme: session.practice_theme, ai_roleplay_session: session)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-voice-analysis-empty]", text: "話し方の分析結果はありません"
+    assert_select "[data-ai-roleplay-voice-analysis-item]", count: 0
+  end
+
+  test "接客内容の評価がなく話し方の分析だけがある場合は両方の状態を表示する" do
+    sign_in @user
+
+    session = AiRoleplaySession.create!(user: @user, practice_theme: practice_themes(:one))
+    create_voice_analysis(session)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_select "p", text: "このロープレの評価結果はありません。"
+    assert_select "[data-ai-roleplay-evaluation-category]", count: 0
+    assert_select "[data-ai-roleplay-voice-analysis-item]", count: 3
+  end
+
+  test "話し方の分析結果は関連データを一括で読み込みN+1クエリを発生させない" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    create_voice_analysis(session)
+
+    queries = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+      queries << payload[:sql] unless payload[:name] == "SCHEMA"
+    end
+
+    begin
+      get evaluation_ai_roleplay_path(session)
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+    end
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-voice-analysis-item]", count: 3
+
+    assert_equal 1, queries.count { |sql| sql.match?(/FROM "practices"/) }
+    assert_equal 1, queries.count { |sql| sql.match?(/FROM "analyses"/) }
+
+    # 1件の表示ではクエリ数が遅延読み込みと変わらないため、
+    # has_oneの遅延読み込みで付くLIMITがなく、includesで一括読み込みしていることを確認する
+    queries.select { |sql| sql.match?(/FROM "(practices|analyses)"/) }.each do |sql|
+      assert_no_match(/LIMIT/, sql)
+    end
+  end
+
+  test "他のユーザーの話し方の分析結果を含む評価結果は表示できない" do
+    other_session = ai_roleplay_sessions(:two)
+    create_voice_analysis(other_session, ai_comment: "他のユーザーへのアドバイスです。")
+
+    sign_in @user
+
+    get evaluation_ai_roleplay_path(other_session)
+
+    assert_response :not_found
+    # テスト環境の404画面にはテストコードの抜粋が表示されるため、本文ではなく表示要素の有無で確認する
+    assert_select "[data-ai-roleplay-voice-analysis]", count: 0
+  end
+
+  test "話し方の分析結果を含む評価結果は未ログインの場合ログイン画面へリダイレクトされる" do
+    session = ai_roleplay_sessions(:one)
+    create_voice_analysis(session, ai_comment: "ログインユーザー向けのアドバイスです。")
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_redirected_to new_user_session_path
+    assert_not_includes response.body, "ログインユーザー向けのアドバイスです。"
+  end
+
   private
+
+  def create_voice_analysis(session, **attributes)
+    practice = Practice.create!(
+      user: session.user,
+      practice_theme: session.practice_theme,
+      ai_roleplay_session: session,
+      duration: 30.0,
+      transcription: "いらっしゃいませ"
+    )
+
+    practice.create_analysis!(
+      {
+        total_score: 79,
+        speech_speed: 7.25,
+        speech_speed_score: 83,
+        filler_count: 3,
+        filler_score: 64,
+        volume: -21.3,
+        volume_score: 91,
+        ai_comment: "テスト用のAIコメントです。"
+      }.merge(attributes)
+    )
+  end
+
+  # 接客内容の評価結果を保存する評価サービスに差し替える
+  def stub_saved_ai_roleplay_evaluation(&block)
+    AiRoleplayEvaluationService.stub(
+      :new,
+      lambda { |session|
+        Struct.new(:session) do
+          def call
+            AiRoleplayEvaluation.create!(ai_roleplay_session: session, hearing_score: 4)
+          end
+        end.new(session)
+      },
+      &block
+    )
+  end
+
+  # テスト中に実際のGroq APIへ通信しないよう、話し方の分析のAIコメント生成を差し替える
+  def stub_ai_comment(&block)
+    AiCommentService.stub(
+      :new,
+      ->(_analysis) { Struct.new(:call).new("テスト用のAIコメントです。") },
+      &block
+    )
+  end
+
+  def post_ai_roleplay(conversation_history: roleplay_conversation_history, clerk_audio_turns: nil)
+    params = {
+      practice_theme_id: practice_themes(:one).id,
+      duration: 120.0,
+      end_reason: "user_end",
+      conversation_history: conversation_history.to_json
+    }
+    params[:clerk_audio_turns] = clerk_audio_turns unless clerk_audio_turns.nil?
+
+    post ai_roleplays_path, params: params
+  end
+
+  def clerk_audio(filename = "test_volume.webm", content_type = "audio/webm;codecs=opus")
+    fixture_file_upload(filename, content_type)
+  end
+
+  def assert_no_voice_analysis_saved(&block)
+    assert_no_difference(
+      [
+        "Practice.count",
+        "Analysis.count",
+        "ActiveStorage::Blob.where(filename: AiRoleplayVoiceAnalysisService::AUDIO_FILENAME).count"
+      ],
+      &block
+    )
+  end
+
+  def with_stubbed_concatenator_const(name, value)
+    original = ClerkAudioConcatenator.const_get(name)
+
+    ClerkAudioConcatenator.send(:remove_const, name)
+    ClerkAudioConcatenator.const_set(name, value)
+
+    yield
+  ensure
+    ClerkAudioConcatenator.send(:remove_const, name)
+    ClerkAudioConcatenator.const_set(name, original)
+  end
+
+  def two_turn_conversation_history
+    [
+      { role: "user", content: "現在インターネットは何をご利用ですか？" },
+      { role: "assistant", content: "今は他社の光回線を使っています。" },
+      { role: "user", content: "えーと、ご利用年数はどのくらいですか。" },
+      { role: "assistant", content: "5年くらいです。" }
+    ]
+  end
 
   # テスト中に実際のGroq APIへ通信しないよう、評価サービスを差し替える
   def stub_ai_roleplay_evaluation(evaluated_sessions = [], &block)
