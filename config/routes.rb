@@ -33,6 +33,10 @@ Rails.application.routes.draw do
      as: :create_guest_practice
   devise_for :users
 
+  namespace :admin do
+    root to: "dashboard#show"
+  end
+
   get "home/index"
 
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
