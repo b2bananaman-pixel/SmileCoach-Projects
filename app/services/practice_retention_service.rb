@@ -44,5 +44,5 @@ class PracticeRetentionService
       practice.transcription.present?
   end
 
-  private_class_method :retention_days, :retention_period, :raw_data_present?
+  private_class_method :retention_days, :raw_data_present?
 end

@@ -1795,6 +1795,24 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "保持期間を過ぎて録画が削除されたAIロープレの評価結果は録画データがない旨を表示する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    session.update!(created_at: 15.days.ago)
+    attach_video(session)
+
+    AiRoleplayVideoRetentionService.delete_expired
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-video]" do
+      assert_select "[data-ai-roleplay-video-empty]", text: "録画データはありません"
+      assert_select "video", count: 0
+    end
+  end
+
   test "評価結果にActive Storageの期限のない公開URLを出力しない" do
     sign_in @user
 
