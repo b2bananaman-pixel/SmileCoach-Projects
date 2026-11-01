@@ -1,0 +1,26 @@
+name: AI Roleplay Video Retention Dry Run
+
+# 削除対象のAIロープレ録画の件数とセッションIDを確認するだけの手動実行用ワークフロー
+# データを変更しないGETのdry-runエンドポイントだけを呼び、本削除用のPOSTは呼ばない
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dry_run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Show expired AI roleplay videos (dry-run)
+        env:
+          # トークンはスクリプトに直接埋め込まず環境変数で渡す（Secretsの値はログ上でマスクされる）
+          RETENTION_CLEANUP_TOKEN: ${{ secrets.RETENTION_CLEANUP_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 300 \
+            -X GET \
+            -H "Authorization: Bearer ${RETENTION_CLEANUP_TOKEN}" \
+            https://smilecoach-projects.onrender.com/internal/practice_retention/dry_run
+          echo

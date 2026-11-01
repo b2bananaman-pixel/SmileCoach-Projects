@@ -4,6 +4,7 @@ Rails.application.routes.draw do
   end
 
   post "internal/practice_retention", to: "internal/practice_retention#destroy"
+  get "internal/practice_retention/dry_run", to: "internal/practice_retention#dry_run"
 
   resources :analyses, only: [ :show ] do
     patch :smile_score, on: :member
