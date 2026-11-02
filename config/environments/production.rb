@@ -36,8 +36,9 @@ Rails.application.configure do
   # config.action_dispatch.x_sendfile_header = "X-Sendfile" # for Apache
   # config.action_dispatch.x_sendfile_header = "X-Accel-Redirect" # for NGINX
 
-  # Store uploaded files on Google Cloud Storage in production.
-  config.active_storage.service = :google
+  # Store uploaded files on Google Cloud Storage (us-west1) in production.
+  # 切り替え前に保存したファイルは、blobのservice_nameに従って旧バケット（:google）から読み取る
+  config.active_storage.service = :google_us_west1
 
   # Mount Action Cable outside main process or domain.
   # config.action_cable.mount_path = nil
