@@ -34,6 +34,19 @@ export default class extends Controller {
     maxTotalSize: 30 * 1024 * 1024
   }
 
+  // 録画容量を抑えるための録画設定（通常練習の録画とは別に管理する）
+  // 値は目標値で、カメラやブラウザによっては近い値で録画される
+  static recordingSettings = {
+    video: {
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      aspectRatio: { ideal: 4 / 3 },
+      frameRate: { ideal: 30, max: 30 }
+    },
+    videoBitsPerSecond: 1_000_000,
+    audioBitsPerSecond: 64_000
+  }
+
   connect() {
     this.mediaStream = null
     this.recordingStream = null
@@ -115,7 +128,7 @@ export default class extends Controller {
 
       this.mediaStream =
         await navigator.mediaDevices.getUserMedia({
-          video: true,
+          video: this.constructor.recordingSettings.video,
           audio: true
         })
 
@@ -329,9 +342,15 @@ export default class extends Controller {
     const mimeType =
       this.supportedVideoMimeType()
 
-    const options = mimeType
-      ? { mimeType: mimeType }
-      : undefined
+    const settings =
+      this.constructor.recordingSettings
+
+    // ビットレートは録画形式に関係なく指定し、録画形式はブラウザが対応している場合だけ指定する
+    const options = {
+      videoBitsPerSecond: settings.videoBitsPerSecond,
+      audioBitsPerSecond: settings.audioBitsPerSecond,
+      ...(mimeType ? { mimeType: mimeType } : {})
+    }
 
     this.roleplayChunks = []
 
