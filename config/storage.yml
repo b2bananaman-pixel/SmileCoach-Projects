@@ -10,3 +10,10 @@ google:
   service: GCS
   project: smilecoach-509411
   bucket: smilecoach-production-storage
+
+# 新しい保存先（us-west1）。既存のファイルはgoogleサービス（旧バケット）から読み取り・削除するため、googleの設定は残す
+# サービス名は各blobのservice_nameとしてDBに保存されるため変更しない
+google_us_west1:
+  service: GCS
+  project: smilecoach-509411
+  bucket: smilecoach-video-us-west1
