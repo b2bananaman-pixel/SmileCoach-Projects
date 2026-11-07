@@ -27,7 +27,7 @@
             <%= link_to "ホーム", root_path, class: "btn btn-outline-secondary btn-sm" %>
           <% end %>
 
-          <% if user_signed_in? && current_user.admin? %>
+          <% if user_signed_in? && current_user.admin_access? %>
             <%= link_to "管理画面", admin_root_path, class: "btn btn-outline-primary btn-sm", data: { admin_nav_link: true } %>
           <% end %>
 

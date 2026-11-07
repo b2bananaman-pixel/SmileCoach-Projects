@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_28_150000) do
+ActiveRecord::Schema[7.2].define(version: 2026_11_07_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -140,8 +140,11 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_28_150000) do
     t.datetime "updated_at", null: false
     t.string "name"
     t.boolean "admin", default: false, null: false
+    t.integer "role", default: 0, null: false
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
+    t.index ["role"], name: "index_users_on_role"
+    t.check_constraint "role = ANY (ARRAY[0, 1, 2])", name: "users_role_check"
   end
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"

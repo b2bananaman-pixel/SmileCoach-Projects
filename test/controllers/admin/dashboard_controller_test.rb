@@ -2,8 +2,8 @@ require "test_helper"
 
 class Admin::DashboardControllerTest < ActionDispatch::IntegrationTest
   setup do
-    @admin = users(:one)
-    @admin.update!(admin: true)
+    @admin = users(:admin)
+    @super_admin = users(:super_admin)
     @user = users(:two)
   end
 
@@ -24,6 +24,15 @@ class Admin::DashboardControllerTest < ActionDispatch::IntegrationTest
       assert_select "[data-admin-dashboard-section=products] h2", text: "商材管理"
       assert_select "[data-admin-dashboard-section=roleplay_scenarios] h2", text: "ロープレシチュエーション管理"
     end
+  end
+
+  test "最高管理者は管理画面を表示できる" do
+    sign_in @super_admin
+
+    get admin_root_path
+
+    assert_response :success
+    assert_select "[data-admin-dashboard] h1", text: "管理画面"
   end
 
   test "管理画面には未実装の機能へのリンクを表示しない" do
@@ -58,19 +67,19 @@ class Admin::DashboardControllerTest < ActionDispatch::IntegrationTest
     get admin_root_path
     assert_response :success
 
-    @admin.update!(admin: false)
+    @admin.change_role!(:user)
 
     get admin_root_path
 
     assert_response :not_found
   end
 
-  test "一般ユーザーがadminパラメータを付けても管理画面にアクセスできない" do
+  test "一般ユーザーがadmin・roleパラメータを付けても管理画面にアクセスできない" do
     sign_in @user
 
-    get admin_root_path, params: { admin: true, user: { admin: true } }
+    get admin_root_path, params: { admin: true, role: "super_admin", user: { admin: true, role: "super_admin" } }
 
     assert_response :not_found
-    assert_not @user.reload.admin?
+    assert @user.reload.user?
   end
 end

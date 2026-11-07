@@ -32,10 +32,16 @@ Rails.application.routes.draw do
   post "guest/practice_themes/:id/create_practice",
      to: "guest_practice_themes#create_practice",
      as: :create_guest_practice
-  devise_for :users
+  # 最後の最高管理者がアカウントを削除できないよう、アカウント削除の処理だけを差し替える
+  devise_for :users, controllers: { registrations: "users/registrations" }
 
   namespace :admin do
     root to: "dashboard#show"
+
+    # 最高管理者専用の機能（GET /admin/super_admin）
+    namespace :super_admin do
+      root to: "dashboard#show"
+    end
   end
 
   get "home/index"
