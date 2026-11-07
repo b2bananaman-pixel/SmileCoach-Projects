@@ -7,3 +7,18 @@ two:
   name: Fixture User 2
   email: fixture2@example.com
   encrypted_password: <%= Devise::Encryptor.digest(User, "password") %>
+
+# 旧adminカラムは、User#change_role!と同じく管理者向け機能を利用できる権限と一致させる
+admin:
+  name: Fixture Admin
+  email: fixture-admin@example.com
+  encrypted_password: <%= Devise::Encryptor.digest(User, "password") %>
+  role: admin
+  admin: true
+
+super_admin:
+  name: Fixture Super Admin
+  email: fixture-super-admin@example.com
+  encrypted_password: <%= Devise::Encryptor.digest(User, "password") %>
+  role: super_admin
+  admin: true
