@@ -4,6 +4,14 @@ class AiRoleplaysController < ApplicationController
 
   class InvalidClerkAudioError < StandardError; end
 
+  # 商材情報のトークンが指す商材が存在しない場合のエラー
+  class RoleplayProductNotFoundError < StandardError; end
+
+  # AIロープレ画面で受け付ける商材IDの形式（正の整数）
+  #
+  # "1abc" のような値も型変換で1として検索されてしまうため、文字列の形式を先に確認する。
+  PRODUCT_ID_FORMAT = /\A[1-9][0-9]{0,18}\z/
+
   # 録画の転送先（ストレージの期限付きURL）の有効期限
   VIDEO_URL_EXPIRES_IN = 30.minutes
 
@@ -12,8 +20,17 @@ class AiRoleplaysController < ApplicationController
 
   before_action :authenticate_user!
   before_action :set_practice_theme, only: [ :show ]
+  before_action :set_roleplay_product, only: [ :show ]
 
+  # 商材を選択した場合は、開始時点の商材情報を暗号化したトークンを画面に渡し、終了時の保存で受け取る
   def show
+    return if @product.nil?
+
+    @product_snapshot_token = AiRoleplayProductSnapshotToken.generate(
+      user: current_user,
+      practice_theme: @practice_theme,
+      product: @product
+    )
   end
 
   def evaluation
@@ -47,9 +64,12 @@ class AiRoleplaysController < ApplicationController
   def create
     conversation_history = parsed_conversation_history
     practice_theme = PracticeTheme.find(params.require(:practice_theme_id))
+    roleplay_product = verified_roleplay_product(practice_theme)
 
     ai_roleplay_session = current_user.ai_roleplay_sessions.new(
       practice_theme: practice_theme,
+      product: roleplay_product&.fetch(:product),
+      product_snapshot: roleplay_product&.fetch(:product_snapshot),
       duration: params[:duration],
       end_reason: params[:end_reason],
       started_at: params[:started_at],
@@ -85,6 +105,22 @@ class AiRoleplaysController < ApplicationController
     render json: {
       error: "会話履歴の形式が不正です"
     }, status: :unprocessable_entity
+  rescue AiRoleplayProductSnapshotToken::InvalidTokenError => e
+    Rails.logger.warn(
+      "[AiRoleplaysController#create] Invalid product snapshot token"
+    )
+
+    render json: {
+      error: e.message
+    }, status: :unprocessable_entity
+  rescue RoleplayProductNotFoundError
+    Rails.logger.warn(
+      "[AiRoleplaysController#create] Roleplay product not found"
+    )
+
+    render json: {
+      error: "選択した商材が見つかりません"
+    }, status: :not_found
   rescue ActionController::ParameterMissing,
          ArgumentError,
          ActiveRecord::RecordInvalid => e
@@ -187,6 +223,42 @@ class AiRoleplaysController < ApplicationController
 
   def set_practice_theme
     @practice_theme = PracticeTheme.find(params[:id])
+  end
+
+  # 商材IDの指定がない・空文字の場合は商材未選択とし、従来どおりAIロープレを開始する
+  #
+  # 存在しない・非公開・無効カテゴリの商材と、不正な形式の商材IDは404とする。
+  # 管理者も一般ユーザーと同じ条件で、AIロープレで利用可能な商材だけを選択できる。
+  def set_roleplay_product
+    product_id = params[:product_id]
+
+    return if product_id.nil? || product_id == ""
+
+    raise ActiveRecord::RecordNotFound unless product_id.is_a?(String) && product_id.match?(PRODUCT_ID_FORMAT)
+
+    @product = Product.available_for_roleplay.includes(:product_category).find(product_id)
+  end
+
+  # 保存時の商材は、AIロープレ画面で発行したトークンの内容だけを使い、
+  # ブラウザから送られたproduct_id・product_snapshotは使用しない
+  #
+  # 開始時点で利用可能だった商材は、練習中に非公開・カテゴリ無効になっても保存できるよう、
+  # 保存時は公開状態・カテゴリの状態を確認せず、トークンの正当性と商材の存在だけを確認する。
+  def verified_roleplay_product(practice_theme)
+    token = params[:product_snapshot_token]
+
+    return if token.nil? || token == ""
+
+    result = AiRoleplayProductSnapshotToken.verify!(
+      token,
+      user: current_user,
+      practice_theme: practice_theme
+    )
+
+    product = Product.find_by(id: result.product_id)
+    raise RoleplayProductNotFoundError if product.nil?
+
+    { product: product, product_snapshot: result.product_snapshot }
   end
 
   # 評価に失敗してもセッション保存は成功扱いとするため、例外はここで処理する

@@ -1873,6 +1873,302 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     attachment_queries.each { |sql| assert_no_match(/LIMIT/, sql) }
   end
 
+  test "商材IDを指定すると、AIロープレ画面に商材名と開始時点の商材情報のトークンを設定する" do
+    sign_in @user
+    product = products(:published_card)
+
+    get ai_roleplay_practice_theme_path(practice_themes(:one), product_id: product.id)
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-product]", text: "商材：ポイントカード"
+
+    result = AiRoleplayProductSnapshotToken.verify!(
+      product_snapshot_token_from_page, user: @user, practice_theme: practice_themes(:one)
+    )
+    assert_equal product.id, result.product_id
+    assert_equal "ポイントカード", result.product_snapshot.dig("product", "name")
+  end
+
+  test "商材IDを指定しない場合・空文字の場合は「商材指定なし」と表示し、トークンを設定しない" do
+    sign_in @user
+
+    [ {}, { product_id: "" } ].each do |params|
+      get ai_roleplay_practice_theme_path(practice_themes(:one), params)
+
+      assert_response :success
+      assert_select "[data-ai-roleplay-product]", text: "商材指定なし"
+      assert_select "[data-ai-roleplay-product-snapshot-token-value]", count: 0
+      assert_select '[data-controller="ai-roleplay"]', count: 1
+      assert_select '[data-ai-roleplay-target="timer"]', text: "10:00"
+    end
+  end
+
+  # 404の例外ではログイン状態のセッションが保存されないため、リクエストごとにログインする
+  test "存在しない・非公開・無効カテゴリの商材IDを指定するとAIロープレ画面は404を返す" do
+    # 無効なカテゴリに属する公開中の商材
+    products(:legacy).update!(published: true)
+
+    [ Product.maximum(:id) + 1, products(:fiber).id, products(:legacy).id ].each do |product_id|
+      sign_in @user
+      get ai_roleplay_practice_theme_path(practice_themes(:one), product_id: product_id)
+
+      assert_response :not_found, "product_id=#{product_id}"
+    end
+  end
+
+  test "不正な形式の商材IDを指定すると500ではなく404を返す" do
+    product_id = products(:published_card).id
+
+    [ "abc", "#{product_id}abc", "-#{product_id}", "0", "#{product_id}.0", " #{product_id}", "%20",
+      "9" * 19, "9" * 20, [ product_id.to_s ], { "id" => product_id.to_s } ].each do |value|
+      sign_in @user
+      get ai_roleplay_practice_theme_path(practice_themes(:one)), params: { product_id: value }
+
+      assert_response :not_found, "product_id=#{value.inspect}"
+    end
+  end
+
+  test "管理者も非公開の商材ではAIロープレを開始できない" do
+    sign_in users(:admin)
+
+    get ai_roleplay_practice_theme_path(practice_themes(:one), product_id: products(:fiber).id)
+
+    assert_response :not_found
+  end
+
+  test "AIロープレ画面で発行したトークンで、商材と開始時点の商材情報をセッションに保存する" do
+    sign_in @user
+    product = products(:published_card)
+
+    get ai_roleplay_practice_theme_path(practice_themes(:one), product_id: product.id)
+    token = product_snapshot_token_from_page
+
+    evaluated_sessions = []
+
+    stub_ai_roleplay_evaluation(evaluated_sessions) do
+      assert_difference([ "AiRoleplaySession.count" ], 1) do
+        assert_difference("AiRoleplayMessage.count", 2) do
+          post_ai_roleplay(product_snapshot_token: token)
+        end
+      end
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+
+    assert_equal product, session.product
+    assert_equal "ポイントカード", session.product_snapshot.dig("product", "name")
+    assert_equal product.lock_version, session.product_snapshot.dig("product", "lock_version")
+    assert_equal "カード", session.product_snapshot.dig("category", "name")
+    assert_equal Product::ROLEPLAY_SNAPSHOT_VERSION, session.product_snapshot["version"]
+    assert session.product_snapshot["captured_at"].present?
+    assert_equal [ session ], evaluated_sessions
+  end
+
+  test "練習途中で管理者が商材を編集しても、開始時点の商材情報を保存する" do
+    sign_in @user
+    product = products(:published_card)
+    token = product_snapshot_token_for(product)
+
+    product.update!(name: "編集後の名前", summary: "編集後の概要", pricing: "編集後の料金")
+
+    stub_ai_roleplay_evaluation do
+      post_ai_roleplay(product_snapshot_token: token)
+    end
+
+    assert_response :created
+
+    snapshot = AiRoleplaySession.find(response.parsed_body["id"]).product_snapshot
+
+    assert_equal "ポイントカード", snapshot.dig("product", "name")
+    assert_equal "買い物でポイントが貯まるクレジットカード。", snapshot.dig("product", "summary")
+    assert_nil snapshot.dig("product", "pricing")
+    assert_equal 0, snapshot.dig("product", "lock_version")
+  end
+
+  test "練習途中で商材が非公開になっても、開始時点の商材情報でセッションを保存できる" do
+    sign_in @user
+    product = products(:published_card)
+    token = product_snapshot_token_for(product)
+
+    product.update!(published: false)
+
+    stub_ai_roleplay_evaluation do
+      assert_difference("AiRoleplaySession.count", 1) do
+        post_ai_roleplay(product_snapshot_token: token)
+      end
+    end
+
+    assert_response :created
+    assert_equal product, AiRoleplaySession.find(response.parsed_body["id"]).product
+  end
+
+  test "練習途中で商材のカテゴリが無効になっても、開始時点の商材情報でセッションを保存できる" do
+    sign_in @user
+    product = products(:published_card)
+    token = product_snapshot_token_for(product)
+
+    product.product_category.update!(active: false)
+
+    stub_ai_roleplay_evaluation do
+      assert_difference("AiRoleplaySession.count", 1) do
+        post_ai_roleplay(product_snapshot_token: token)
+      end
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+
+    assert_equal product, session.product
+    assert_equal "カード", session.product_snapshot.dig("category", "name")
+  end
+
+  test "商材を指定しない場合は、従来どおりproduct_idとproduct_snapshotをnilとして保存する" do
+    sign_in @user
+
+    [ nil, "" ].each do |token|
+      stub_ai_roleplay_evaluation do
+        assert_difference([ "AiRoleplaySession.count" ], 1) do
+          post_ai_roleplay(product_snapshot_token: token)
+        end
+      end
+
+      assert_response :created
+
+      session = AiRoleplaySession.find(response.parsed_body["id"])
+
+      assert_nil session.product
+      assert_nil session.product_snapshot
+    end
+  end
+
+  test "改ざん・期限切れ・別ユーザー・別練習テーマのトークンは422を返し、セッションを保存しない" do
+    sign_in @user
+    product = products(:published_card)
+
+    valid_token = product_snapshot_token_for(product)
+    tampered_token = valid_token.dup
+    tampered_token[10] = tampered_token[10] == "A" ? "B" : "A"
+    expired_token = travel_to(2.hours.ago - 1.second) { product_snapshot_token_for(product) }
+
+    tokens = {
+      "改ざん" => tampered_token,
+      "形式不正" => "invalid-token",
+      "期限切れ" => expired_token,
+      "別ユーザー" => product_snapshot_token_for(product, user: users(:two)),
+      "別練習テーマ" => product_snapshot_token_for(product, practice_theme: practice_themes(:two))
+    }
+
+    tokens.each do |label, token|
+      evaluated_sessions = []
+
+      stub_ai_roleplay_evaluation(evaluated_sessions) do
+        assert_no_voice_analysis_saved do
+          assert_no_difference([ "AiRoleplaySession.count", "AiRoleplayMessage.count" ]) do
+            post_ai_roleplay(
+              product_snapshot_token: token,
+              clerk_audio_turns: [ clerk_audio ]
+            )
+          end
+        end
+      end
+
+      assert_response :unprocessable_entity, label
+      assert_equal "商材情報のトークンが不正または期限切れです", response.parsed_body["error"], label
+      assert_empty evaluated_sessions, label
+    end
+  end
+
+  test "トークンの商材が存在しない場合は404を返し、セッションを保存しない" do
+    sign_in @user
+    product = Product.create!(product_category: product_categories(:card), name: "削除される商材", summary: "概要")
+    product.update!(published: true)
+    token = product_snapshot_token_for(product)
+
+    product.destroy!
+
+    evaluated_sessions = []
+
+    stub_ai_roleplay_evaluation(evaluated_sessions) do
+      assert_no_difference([ "AiRoleplaySession.count", "AiRoleplayMessage.count" ]) do
+        post_ai_roleplay(product_snapshot_token: token)
+      end
+    end
+
+    assert_response :not_found
+    assert_equal "選択した商材が見つかりません", response.parsed_body["error"]
+    assert_empty evaluated_sessions
+  end
+
+  test "ブラウザから送られたproduct_id・product_snapshotは保存に使用しない" do
+    sign_in @user
+    product = products(:published_card)
+    forged_params = { product_id: products(:fiber).id, product_snapshot: { product: { name: "偽の商材" } }.to_json }
+
+    stub_ai_roleplay_evaluation do
+      post_ai_roleplay(product_snapshot_token: product_snapshot_token_for(product), extra_params: forged_params)
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+
+    assert_equal product, session.product
+    assert_equal "ポイントカード", session.product_snapshot.dig("product", "name")
+
+    stub_ai_roleplay_evaluation do
+      post_ai_roleplay(extra_params: forged_params)
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+
+    assert_nil session.product
+    assert_nil session.product_snapshot
+  end
+
+  test "会話履歴の保存に失敗した場合は、商材を指定したセッションも保存しない" do
+    sign_in @user
+    conversation_history = [
+      { role: "user", content: "こんにちは。" },
+      { role: "system", content: "不正なroleです。" }
+    ]
+
+    assert_no_difference([ "AiRoleplaySession.count", "AiRoleplayMessage.count" ]) do
+      post_ai_roleplay(
+        conversation_history: conversation_history,
+        product_snapshot_token: product_snapshot_token_for(products(:published_card))
+      )
+    end
+
+    assert_response :unprocessable_entity
+    assert_not AiRoleplaySession.exists?(product_id: products(:published_card).id)
+  end
+
+  test "商材を指定した場合も、接客評価に失敗したときはセッションと商材情報を保存して201を返す" do
+    sign_in @user
+    evaluation_service = Object.new
+    def evaluation_service.call
+      raise "評価に失敗しました"
+    end
+
+    AiRoleplayEvaluationService.stub(:new, evaluation_service) do
+      assert_difference("AiRoleplaySession.count", 1) do
+        post_ai_roleplay(product_snapshot_token: product_snapshot_token_for(products(:published_card)))
+      end
+    end
+
+    assert_response :created
+
+    session = AiRoleplaySession.find(response.parsed_body["id"])
+
+    assert_equal products(:published_card), session.product
+    assert_nil session.ai_roleplay_evaluation
+  end
+
   private
 
   def attach_video(session)
@@ -1930,7 +2226,8 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     )
   end
 
-  def post_ai_roleplay(conversation_history: roleplay_conversation_history, clerk_audio_turns: nil)
+  def post_ai_roleplay(conversation_history: roleplay_conversation_history, clerk_audio_turns: nil,
+                       product_snapshot_token: nil, extra_params: {})
     params = {
       practice_theme_id: practice_themes(:one).id,
       duration: 120.0,
@@ -1938,8 +2235,18 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
       conversation_history: conversation_history.to_json
     }
     params[:clerk_audio_turns] = clerk_audio_turns unless clerk_audio_turns.nil?
+    params[:product_snapshot_token] = product_snapshot_token unless product_snapshot_token.nil?
+    params.merge!(extra_params)
 
     post ai_roleplays_path, params: params
+  end
+
+  def product_snapshot_token_for(product, user: @user, practice_theme: practice_themes(:one))
+    AiRoleplayProductSnapshotToken.generate(user: user, practice_theme: practice_theme, product: product)
+  end
+
+  def product_snapshot_token_from_page
+    css_select("[data-ai-roleplay-product-snapshot-token-value]").first["data-ai-roleplay-product-snapshot-token-value"]
   end
 
   def clerk_audio(filename = "test_volume.webm", content_type = "audio/webm;codecs=opus")

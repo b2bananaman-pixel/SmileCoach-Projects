@@ -102,4 +102,54 @@ class AiRoleplaySessionTest < ActiveSupport::TestCase
 
     assert_not Practice.exists?(ai_roleplay_session_id: session.id)
   end
+
+  test "商材を指定しないセッションはproduct・product_snapshotがnilのまま保存できる" do
+    session = ai_roleplay_sessions(:one)
+
+    assert_nil session.product
+    assert_nil session.product_snapshot
+    assert session.update(duration: 60.0)
+  end
+
+  test "商材と開始時点のスナップショットを保存できる" do
+    session = ai_roleplay_sessions(:one)
+    product = products(:published_card)
+    snapshot = product.roleplay_snapshot
+
+    session.update!(product: product, product_snapshot: snapshot)
+    session.reload
+
+    assert_equal product, session.product
+    assert_equal snapshot, session.product_snapshot
+    assert_includes product.ai_roleplay_sessions, session
+  end
+
+  test "商材IDとスナップショットの片方だけを保存することはDBの制約で防ぐ" do
+    session = ai_roleplay_sessions(:one)
+    product = products(:published_card)
+
+    assert_raises(ActiveRecord::StatementInvalid) do
+      AiRoleplaySession.transaction(requires_new: true) { session.update_columns(product_id: product.id) }
+    end
+    assert_raises(ActiveRecord::StatementInvalid) do
+      AiRoleplaySession.transaction(requires_new: true) { session.update_columns(product_snapshot: product.roleplay_snapshot) }
+    end
+    assert_nil session.reload.product_id
+  end
+
+  test "スナップショットはJSONのオブジェクト以外を保存できない" do
+    session = ai_roleplay_sessions(:one)
+
+    assert_raises(ActiveRecord::StatementInvalid) do
+      session.update_columns(product_id: products(:published_card).id, product_snapshot: [ "配列" ])
+    end
+  end
+
+  test "存在しない商材IDはDBの外部キー制約で保存できない" do
+    session = ai_roleplay_sessions(:one)
+
+    assert_raises(ActiveRecord::InvalidForeignKey) do
+      session.update_columns(product_id: 0, product_snapshot: { "version" => 1 })
+    end
+  end
 end

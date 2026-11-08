@@ -24,7 +24,9 @@ export default class extends Controller {
     synthesizeUrl: String,
     saveUrl: String,
     evaluationUrl: String,
-    practiceThemeId: Number
+    practiceThemeId: Number,
+    // 商材を選択した場合だけ設定される、開始時点の商材情報を暗号化したトークン
+    productSnapshotToken: String
   }
 
   // サーバー側（ClerkAudioConcatenator）と同じ発話音声の上限
@@ -1379,6 +1381,14 @@ export default class extends Controller {
         this.conversationHistory
       )
     )
+
+    // 商材情報はサーバーが発行したトークンだけを送り、保存時にサーバー側で検証する
+    if (this.productSnapshotTokenValue) {
+      formData.append(
+        "product_snapshot_token",
+        this.productSnapshotTokenValue
+      )
+    }
 
     this.sendableClerkAudioTurns()
       .forEach((audioBlob, index) => {

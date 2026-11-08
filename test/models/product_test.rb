@@ -146,4 +146,52 @@ class ProductTest < ActiveSupport::TestCase
     assert_raises(ActiveRecord::StaleObjectError) { second.update!(name: "後から保存した名前") }
     assert_equal "先に保存した名前", products(:fiber).reload.name
   end
+
+  test "available_for_roleplayは公開中で、カテゴリが有効な商材だけを返す" do
+    # 無効なカテゴリに属する公開中の商材
+    products(:legacy).update!(published: true)
+
+    products = Product.available_for_roleplay
+
+    assert_includes products, products(:published_card)
+    assert_not_includes products, products(:fiber), "非公開の商材は含めない"
+    assert_not_includes products, products(:legacy), "無効なカテゴリの商材は含めない"
+  end
+
+  test "roleplay_snapshotに商材とカテゴリの情報・取得日時・形式のバージョンを含める" do
+    product = products(:fiber)
+    product.update!(features: "高速通信", precautions: "工事が必要", proposal_points: "在宅勤務向け", confirmation_items: "住居の種類")
+    captured_at = Time.zone.parse("2026-11-08 10:00:00.123456")
+
+    snapshot = product.roleplay_snapshot(captured_at: captured_at)
+
+    assert_equal 1, snapshot["version"]
+    assert_equal captured_at.iso8601(6), snapshot["captured_at"]
+    assert_equal(
+      {
+        "id" => product.id, "name" => "光回線プラン", "maker" => "サンプル通信",
+        "official_url" => "https://example.com/fiber", "summary" => "戸建て・マンション向けの光回線サービス。",
+        "features" => "高速通信", "pricing" => "月額5,000円（2年契約）", "precautions" => "工事が必要",
+        "proposal_points" => "在宅勤務向け", "confirmation_items" => "住居の種類", "lock_version" => product.lock_version
+      },
+      snapshot["product"]
+    )
+    assert_equal({ "id" => product_categories(:internet).id, "name" => "インターネット" }, snapshot["category"])
+  end
+
+  test "roleplay_snapshotはJSONに変換しても同じ内容になる" do
+    snapshot = products(:fiber).roleplay_snapshot
+
+    assert_equal snapshot, JSON.parse(snapshot.to_json)
+  end
+
+  test "AIロープレの履歴がある商材は削除できない" do
+    product = products(:published_card)
+    session = ai_roleplay_sessions(:one)
+    session.update!(product: product, product_snapshot: product.roleplay_snapshot)
+
+    assert_not product.destroy
+    assert Product.exists?(product.id)
+    assert_raises(ActiveRecord::InvalidForeignKey) { product.delete }
+  end
 end

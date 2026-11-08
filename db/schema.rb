@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_11_08_100100) do
+ActiveRecord::Schema[7.2].define(version: 2026_11_08_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -86,8 +86,13 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_08_100100) do
     t.datetime "ended_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "product_id"
+    t.jsonb "product_snapshot"
     t.index ["practice_theme_id"], name: "index_ai_roleplay_sessions_on_practice_theme_id"
+    t.index ["product_id"], name: "index_ai_roleplay_sessions_on_product_id"
     t.index ["user_id"], name: "index_ai_roleplay_sessions_on_user_id"
+    t.check_constraint "(product_id IS NULL) = (product_snapshot IS NULL)", name: "ai_roleplay_sessions_product_snapshot_presence"
+    t.check_constraint "product_snapshot IS NULL OR jsonb_typeof(product_snapshot) = 'object'::text", name: "ai_roleplay_sessions_product_snapshot_object"
   end
 
   create_table "analyses", force: :cascade do |t|
@@ -183,6 +188,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_08_100100) do
   add_foreign_key "ai_roleplay_evaluations", "ai_roleplay_sessions"
   add_foreign_key "ai_roleplay_messages", "ai_roleplay_sessions"
   add_foreign_key "ai_roleplay_sessions", "practice_themes"
+  add_foreign_key "ai_roleplay_sessions", "products"
   add_foreign_key "ai_roleplay_sessions", "users"
   add_foreign_key "analyses", "practices"
   add_foreign_key "practices", "ai_roleplay_sessions"
