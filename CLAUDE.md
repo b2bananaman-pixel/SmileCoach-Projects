@@ -86,6 +86,13 @@
 - 最後に【今回の完成内容】を記載する。
 - 実行していない作業や未確認の結果を完了済みとして記載しない。
 - ChatGPTが作業記録を作成できるよう、Claude Codeは必要な実行結果を報告する。
+### 完了記録
+- b2bananaman-pixel/smile_coach#78 管理者が商材情報を登録・編集できるようにする（CLOSED、チェックリスト88項目すべて完了）
+  - PR：b2bananaman-pixel/SmileCoach-Projects#112、マージコミット a54107b
+  - 実装：ProductCategory・Productのモデルと管理画面（一覧・登録・詳細・編集）、商材の公開・非公開、カテゴリの有効・無効の専用切り替え
+  - テスト：541 runs、2587 assertions、0 failures、0 errors、0 skips
+  - RuboCop：違反0件、Brakeman：警告0件、CI（lint・scan_js・scan_ruby・test）全4ジョブ成功
+  - 本番：Renderデプロイ・DBマイグレーション・動作確認成功、既存AIロープレの会話・結果表示を確認
 ## 10. 完了報告
 - 変更したファイルと変更内容を報告する。
 - 実行したテストコマンドと結果を報告する。
