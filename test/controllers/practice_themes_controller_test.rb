@@ -37,6 +37,70 @@ class PracticeThemesControllerTest < ActionDispatch::IntegrationTest
     assert_select "#stop-recording", "録画停止"
 end
 
+  test "AIロープレ用の商材選択欄は任意で、初期値は「商材を指定しない」" do
+    get practice_theme_url(@practice_theme)
+
+    assert_response :success
+    assert_select "form[data-ai-roleplay-product-form][method=get][action=?]",
+                  ai_roleplay_practice_theme_path(@practice_theme) do
+      assert_select "label[for=product_id]", "練習で扱う商材（任意）"
+      assert_select "select[name=product_id]:not([required])" do
+        assert_select "option:first-child[value='']", "商材を指定しない"
+        assert_select "option[selected]", 0
+      end
+      assert_select "button[type=submit]:not([name])", "AIロープレを開始する"
+      # GETで送信するため、商材ID以外のパラメータを送らない
+      assert_select "input[type=hidden]", 0
+    end
+  end
+
+  test "商材選択欄には公開中で、カテゴリが有効な商材だけをカテゴリ名・メーカー名付きで表示する" do
+    products(:legacy).update!(published: true)
+    products(:published_card).update!(maker: "サンプルカード会社")
+
+    get practice_theme_url(@practice_theme)
+
+    assert_select "select[name=product_id]" do
+      assert_select "option[value='#{products(:published_card).id}']", "カード／ポイントカード（サンプルカード会社）"
+      assert_select "option[value='#{products(:fiber).id}']", 0
+      assert_select "option[value='#{products(:legacy).id}']", 0
+      assert_select "option", 2
+    end
+  end
+
+  test "メーカー名がない商材は、カテゴリ名と商材名だけを表示する" do
+    get practice_theme_url(@practice_theme)
+
+    assert_select "option[value='#{products(:published_card).id}']", "カード／ポイントカード"
+  end
+
+  test "選択できる商材が0件でも「商材を指定しない」でAIロープレを開始できる" do
+    Product.update_all(published: false)
+
+    get practice_theme_url(@practice_theme)
+
+    assert_response :success
+    assert_select "select[name=product_id] option", 1
+    assert_select "select[name=product_id] option[value='']", "商材を指定しない"
+    assert_select "button[type=submit]", "AIロープレを開始する"
+  end
+
+  test "商材選択欄はカテゴリをまとめて読み込み、N+1クエリを発生させない" do
+    Product.create!(product_category: product_categories(:internet), name: "追加の商材", summary: "概要").update!(published: true)
+
+    queries = []
+    callback = ->(*, payload) { queries << payload[:sql] unless payload[:name] == "SCHEMA" }
+
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      get practice_theme_url(@practice_theme)
+    end
+
+    assert_response :success
+    assert_select "select[name=product_id] option", 3
+    # 商材とカテゴリを1回のクエリ（JOIN）で読み込み、商材ごとにカテゴリを読み込まない
+    assert_equal 1, queries.count { |sql| sql.match?(/"product_categories"/) }
+  end
+
   test "練習画面に撮影ガイドを閉じた状態で表示する" do
     get practice_theme_url(@practice_theme)
 

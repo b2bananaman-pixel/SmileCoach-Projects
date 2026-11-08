@@ -187,11 +187,20 @@
             </p>
           </div>
 
-          <%= link_to(
-                "AIロープレを開始する",
-                ai_roleplay_practice_theme_path(@practice_theme),
-                class: "btn btn-success btn-lg"
-              ) %>
+          <%# 商材の選択は任意。選択した商材IDはAIロープレ画面でサーバー側が検証する %>
+          <%= form_with url: ai_roleplay_practice_theme_path(@practice_theme),
+                        method: :get,
+                        data: { ai_roleplay_product_form: true } do %>
+            <div class="mb-3 text-start mx-auto" style="max-width: 28rem;">
+              <%= label_tag :product_id, "練習で扱う商材（任意）", class: "form-label" %>
+              <%= select_tag :product_id,
+                             options_from_collection_for_select(@roleplay_products, :id, :roleplay_label),
+                             include_blank: "商材を指定しない",
+                             class: "form-select" %>
+            </div>
+
+            <%= button_tag "AIロープレを開始する", type: "submit", name: nil, class: "btn btn-success btn-lg" %>
+          <% end %>
 
         </div>
       </div>

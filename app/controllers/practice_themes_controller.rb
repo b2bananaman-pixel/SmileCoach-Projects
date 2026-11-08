@@ -7,6 +7,9 @@ class PracticeThemesController < ApplicationController
 
   def show
     @practice_theme = PracticeTheme.find(params[:id])
+    @roleplay_products = Product.available_for_roleplay
+                                .includes(:product_category)
+                                .order(ProductCategory.arel_table[:id], :name, :id)
   end
 
   def create_practice
