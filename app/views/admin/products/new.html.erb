@@ -1,0 +1,9 @@
+<% content_for :title, "商材の登録" %>
+
+<div class="container py-5" style="max-width: 720px;" data-admin-product-form>
+  <h1 class="mb-4">商材の登録</h1>
+
+  <p class="text-muted">登録した商材は非公開の状態で保存されます。公開は商材の詳細画面から行います。</p>
+
+  <%= render "form", product: @product %>
+</div>

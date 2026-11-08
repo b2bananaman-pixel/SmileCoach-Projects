@@ -1,0 +1,55 @@
+<% content_for :title, "カテゴリ管理" %>
+
+<div class="container py-5" data-admin-product-categories>
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">カテゴリ管理</h1>
+    <%= link_to "カテゴリを登録する", new_admin_product_category_path, class: "btn btn-primary" %>
+  </div>
+
+  <p class="text-muted">
+    無効なカテゴリは、新しい商材の登録では選択できません。無効にしても、登録済みの商材との紐付けは維持されます。
+  </p>
+
+  <% if @product_categories.empty? %>
+    <p>登録されているカテゴリはありません。</p>
+  <% else %>
+    <table class="table align-middle">
+      <thead>
+        <tr>
+          <th scope="col">カテゴリ名</th>
+          <th scope="col">状態</th>
+          <th scope="col">商材の件数</th>
+          <th scope="col">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @product_categories.each do |product_category| %>
+          <tr data-product-category-id="<%= product_category.id %>">
+            <td><%= product_category.name %></td>
+            <td>
+              <% if product_category.active? %>
+                <span class="badge bg-success">有効</span>
+              <% else %>
+                <span class="badge bg-secondary">無効</span>
+              <% end %>
+            </td>
+            <td data-product-count><%= @product_counts.fetch(product_category.id, 0) %>件</td>
+            <td class="d-flex gap-2">
+              <%= link_to "編集", edit_admin_product_category_path(product_category), class: "btn btn-outline-primary btn-sm" %>
+              <% if product_category.active? %>
+                <%= button_to "無効にする", deactivate_admin_product_category_path(product_category), method: :patch, class: "btn btn-outline-secondary btn-sm" %>
+              <% else %>
+                <%= button_to "有効にする", activate_admin_product_category_path(product_category), method: :patch, class: "btn btn-outline-success btn-sm" %>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+
+  <div class="d-flex gap-2 mt-4">
+    <%= link_to "商材一覧へ", admin_products_path, class: "btn btn-outline-secondary" %>
+    <%= link_to "管理画面トップへ", admin_root_path, class: "btn btn-outline-secondary" %>
+  </div>
+</div>

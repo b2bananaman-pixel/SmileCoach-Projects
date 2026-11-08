@@ -1,0 +1,57 @@
+<%# 公開状態はこのフォームでは変更せず、商材詳細画面のボタンで切り替える %>
+<%= form_with model: [ :admin, product ] do |f| %>
+  <%= render "admin/shared/error_messages", record: product %>
+
+  <% if product.persisted? %>
+    <%= f.hidden_field :lock_version %>
+  <% end %>
+
+  <div class="mb-3">
+    <%= f.label :product_category_id, Product.human_attribute_name(:product_category), class: "form-label" %>
+    <span class="badge bg-danger">必須</span>
+    <%= f.collection_select :product_category_id,
+                            ProductCategory.selectable_for(product),
+                            :id,
+                            :display_name,
+                            { prompt: "選択してください" },
+                            { class: "form-select", required: true } %>
+    <div class="form-text">新しく選べるのは有効なカテゴリだけです。</div>
+  </div>
+
+  <div class="mb-3">
+    <%= f.label :maker, class: "form-label" %>
+    <span class="badge bg-secondary">任意</span>
+    <%= f.text_field :maker, class: "form-control", maxlength: 100 %>
+  </div>
+
+  <div class="mb-3">
+    <%= f.label :name, class: "form-label" %>
+    <span class="badge bg-danger">必須</span>
+    <%= f.text_field :name, class: "form-control", maxlength: 100, required: true %>
+  </div>
+
+  <div class="mb-3">
+    <%= f.label :official_url, class: "form-label" %>
+    <span class="badge bg-secondary">任意</span>
+    <%= f.url_field :official_url, class: "form-control", maxlength: 500, placeholder: "https://example.com" %>
+  </div>
+
+  <div class="mb-3">
+    <%= f.label :summary, class: "form-label" %>
+    <span class="badge bg-danger">必須</span>
+    <%= f.text_area :summary, class: "form-control", rows: 4, maxlength: 1000, required: true %>
+  </div>
+
+  <% %i[features pricing precautions proposal_points confirmation_items].each do |attribute| %>
+    <div class="mb-3">
+      <%= f.label attribute, class: "form-label" %>
+      <span class="badge bg-secondary">任意</span>
+      <%= f.text_area attribute, class: "form-control", rows: 5, maxlength: Product::TEXT_MAXIMUM_LENGTH %>
+    </div>
+  <% end %>
+
+  <div class="d-flex gap-2">
+    <%= f.submit product.persisted? ? "更新する" : "登録する", class: "btn btn-primary" %>
+    <%= link_to "戻る", product.persisted? ? admin_product_path(product) : admin_products_path, class: "btn btn-outline-secondary" %>
+  </div>
+<% end %>

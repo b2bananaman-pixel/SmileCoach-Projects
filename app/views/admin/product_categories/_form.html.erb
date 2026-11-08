@@ -1,0 +1,19 @@
+<%= form_with model: [ :admin, product_category ] do |f| %>
+  <%= render "admin/shared/error_messages", record: product_category %>
+
+  <% if product_category.persisted? %>
+    <%= f.hidden_field :lock_version %>
+  <% end %>
+
+  <div class="mb-3">
+    <%= f.label :name, class: "form-label" %>
+    <span class="badge bg-danger">必須</span>
+    <%= f.text_field :name, class: "form-control", maxlength: 50, required: true %>
+    <div class="form-text">50文字以内。前後の空白は除去され、全角・半角や大文字・小文字の違いだけの名前は同じカテゴリとして扱います。</div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <%= f.submit product_category.persisted? ? "更新する" : "登録する", class: "btn btn-primary" %>
+    <%= link_to "カテゴリ一覧へ戻る", admin_product_categories_path, class: "btn btn-outline-secondary" %>
+  </div>
+<% end %>

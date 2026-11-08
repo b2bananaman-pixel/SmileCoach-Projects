@@ -1,0 +1,9 @@
+internet:
+  name: インターネット
+
+card:
+  name: カード
+
+inactive:
+  name: 旧サービス
+  active: false
