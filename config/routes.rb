@@ -38,6 +38,21 @@ Rails.application.routes.draw do
   namespace :admin do
     root to: "dashboard#show"
 
+    # 物理削除は行わない。有効・無効、公開・非公開は専用のアクションでのみ切り替える
+    resources :product_categories, only: %i[index new create edit update] do
+      member do
+        patch :activate
+        patch :deactivate
+      end
+    end
+
+    resources :products, only: %i[index show new create edit update] do
+      member do
+        patch :publish
+        patch :unpublish
+      end
+    end
+
     # 最高管理者専用の機能（GET /admin/super_admin）
     namespace :super_admin do
       root to: "dashboard#show"

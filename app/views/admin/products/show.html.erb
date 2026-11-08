@@ -1,0 +1,48 @@
+<% content_for :title, "商材の詳細" %>
+
+<div class="container py-5" style="max-width: 900px;" data-admin-product>
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0"><%= @product.name %></h1>
+    <%= render "published_badge", product: @product %>
+  </div>
+
+  <dl class="row">
+    <dt class="col-sm-3"><%= Product.human_attribute_name(:product_category) %></dt>
+    <dd class="col-sm-9" data-product-category><%= @product.product_category.display_name %></dd>
+
+    <dt class="col-sm-3"><%= Product.human_attribute_name(:maker) %></dt>
+    <dd class="col-sm-9"><%= @product.maker.presence || "未登録" %></dd>
+
+    <dt class="col-sm-3"><%= Product.human_attribute_name(:official_url) %></dt>
+    <dd class="col-sm-9">
+      <% if (official_url = @product.official_url_for_link) %>
+        <%= link_to official_url, official_url, target: "_blank", rel: "noopener noreferrer" %>
+      <% elsif @product.official_url.present? %>
+        <%= @product.official_url %>
+      <% else %>
+        未登録
+      <% end %>
+    </dd>
+
+    <% %i[summary features pricing precautions proposal_points confirmation_items].each do |attribute| %>
+      <dt class="col-sm-3"><%= Product.human_attribute_name(attribute) %></dt>
+      <dd class="col-sm-9" data-product-attribute="<%= attribute %>">
+        <% value = @product.public_send(attribute) %>
+        <%= value.present? ? simple_format(h(value), {}, wrapper_tag: "div") : "未登録" %>
+      </dd>
+    <% end %>
+
+    <dt class="col-sm-3">更新日時</dt>
+    <dd class="col-sm-9"><%= @product.updated_at.strftime("%Y/%m/%d %H:%M") %></dd>
+  </dl>
+
+  <div class="d-flex flex-wrap gap-2">
+    <%= link_to "編集する", edit_admin_product_path(@product), class: "btn btn-primary" %>
+    <% if @product.published? %>
+      <%= button_to "非公開にする", unpublish_admin_product_path(@product), method: :patch, class: "btn btn-outline-secondary" %>
+    <% else %>
+      <%= button_to "公開する", publish_admin_product_path(@product), method: :patch, class: "btn btn-success" %>
+    <% end %>
+    <%= link_to "商材一覧へ戻る", admin_products_path, class: "btn btn-outline-secondary" %>
+  </div>
+</div>

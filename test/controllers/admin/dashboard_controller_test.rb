@@ -35,15 +35,29 @@ class Admin::DashboardControllerTest < ActionDispatch::IntegrationTest
     assert_select "[data-admin-dashboard] h1", text: "管理画面"
   end
 
+  test "商材管理から商材一覧とカテゴリ管理へ移動できる" do
+    sign_in @admin
+
+    get admin_root_path
+
+    assert_response :success
+    assert_select "[data-admin-dashboard-section=products]" do
+      assert_select "a[href='#{admin_products_path}']", text: "商材一覧"
+      assert_select "a[href='#{admin_product_categories_path}']", text: "カテゴリ管理"
+      assert_select ".badge", text: "準備中", count: 0
+    end
+  end
+
   test "管理画面には未実装の機能へのリンクを表示しない" do
     sign_in @admin
 
     get admin_root_path
 
     assert_response :success
-    assert_select "[data-admin-dashboard] a", count: 0
+    assert_select "[data-admin-dashboard] a", count: 2
+    assert_select "[data-admin-dashboard-section=roleplay_scenarios] a", count: 0
     assert_select "[data-admin-dashboard] form", count: 0
-    assert_select "[data-admin-dashboard] .badge", text: "準備中", count: 2
+    assert_select "[data-admin-dashboard-section=roleplay_scenarios] .badge", text: "準備中", count: 1
   end
 
   test "一般ユーザーが管理画面にアクセスすると404を返す" do

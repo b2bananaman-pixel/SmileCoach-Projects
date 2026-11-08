@@ -1,0 +1,40 @@
+<% content_for :title, "商材一覧" %>
+
+<div class="container py-5" data-admin-products>
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">商材一覧</h1>
+    <%= link_to "商材を登録する", new_admin_product_path, class: "btn btn-primary" %>
+  </div>
+
+  <% if @products.empty? %>
+    <p>登録されている商材はありません。</p>
+  <% else %>
+    <table class="table align-middle">
+      <thead>
+        <tr>
+          <th scope="col">商材名</th>
+          <th scope="col">カテゴリ</th>
+          <th scope="col">メーカー</th>
+          <th scope="col">公開状態</th>
+          <th scope="col">更新日時</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @products.each do |product| %>
+          <tr data-product-id="<%= product.id %>">
+            <td><%= link_to product.name, admin_product_path(product) %></td>
+            <td><%= product.product_category.display_name %></td>
+            <td><%= product.maker %></td>
+            <td><%= render "published_badge", product: product %></td>
+            <td><%= product.updated_at.strftime("%Y/%m/%d %H:%M") %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+
+  <div class="d-flex gap-2 mt-4">
+    <%= link_to "カテゴリ管理へ", admin_product_categories_path, class: "btn btn-outline-secondary" %>
+    <%= link_to "管理画面トップへ", admin_root_path, class: "btn btn-outline-secondary" %>
+  </div>
+</div>

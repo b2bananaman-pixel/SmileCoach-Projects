@@ -1,0 +1,40 @@
+# 管理画面（商材・カテゴリ）で使用する日本語の表示
+# blank・taken・invalidなどの共通メッセージはdevise.ja.ymlで定義している
+ja:
+  errors:
+    # 日本語では項目名とメッセージの間に空白を入れない（例: 商材名を入力してください）
+    format: "%{attribute}%{message}"
+    messages:
+      too_long: "は%{count}文字以内で入力してください"
+      required: "を選択してください"
+
+  activerecord:
+    models:
+      product_category: "カテゴリ"
+      product: "商材"
+
+    attributes:
+      product_category:
+        name: "カテゴリ名"
+        active: "状態"
+      product:
+        product_category: "カテゴリ"
+        maker: "メーカー"
+        name: "商材名"
+        official_url: "公式サイトURL"
+        summary: "概要"
+        features: "特徴"
+        pricing: "料金・契約条件"
+        precautions: "注意事項"
+        proposal_points: "提案ポイント"
+        confirmation_items: "確認すべき事項"
+        published: "公開状態"
+
+    errors:
+      models:
+        product:
+          attributes:
+            official_url:
+              invalid_url: "はhttp://またはhttps://から始まるURLを入力してください"
+            product_category:
+              inactive: "は無効なため選択できません"

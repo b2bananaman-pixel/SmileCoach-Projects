@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_11_07_150000) do
+ActiveRecord::Schema[7.2].define(version: 2026_11_08_100100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -130,6 +130,37 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_07_150000) do
     t.index ["user_id"], name: "index_practices_on_user_id"
   end
 
+  create_table "product_categories", force: :cascade do |t|
+    t.string "name", limit: 50, null: false
+    t.boolean "active", default: true, null: false
+    t.integer "lock_version", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index "lower((name)::text)", name: "index_product_categories_on_lower_name", unique: true
+    t.check_constraint "btrim(name::text) <> ''::text", name: "product_categories_name_present"
+  end
+
+  create_table "products", force: :cascade do |t|
+    t.bigint "product_category_id", null: false
+    t.string "maker", limit: 100
+    t.string "name", limit: 100, null: false
+    t.string "official_url", limit: 500
+    t.text "summary", null: false
+    t.text "features"
+    t.text "pricing"
+    t.text "precautions"
+    t.text "proposal_points"
+    t.text "confirmation_items"
+    t.boolean "published", default: false, null: false
+    t.integer "lock_version", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["product_category_id"], name: "index_products_on_product_category_id"
+    t.index ["published"], name: "index_products_on_published"
+    t.check_constraint "btrim(name::text) <> ''::text", name: "products_name_present"
+    t.check_constraint "btrim(summary) <> ''::text", name: "products_summary_present"
+  end
+
   create_table "users", force: :cascade do |t|
     t.string "email", default: "", null: false
     t.string "encrypted_password", default: "", null: false
@@ -157,4 +188,5 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_07_150000) do
   add_foreign_key "practices", "ai_roleplay_sessions"
   add_foreign_key "practices", "practice_themes"
   add_foreign_key "practices", "users"
+  add_foreign_key "products", "product_categories"
 end

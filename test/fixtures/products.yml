@@ -1,0 +1,18 @@
+fiber:
+  product_category: internet
+  maker: サンプル通信
+  name: 光回線プラン
+  official_url: https://example.com/fiber
+  summary: 戸建て・マンション向けの光回線サービス。
+  pricing: 月額5,000円（2年契約）
+
+published_card:
+  product_category: card
+  name: ポイントカード
+  summary: 買い物でポイントが貯まるクレジットカード。
+  published: true
+
+legacy:
+  product_category: inactive
+  name: 旧プラン
+  summary: 現在は新規受付を終了しているサービス。

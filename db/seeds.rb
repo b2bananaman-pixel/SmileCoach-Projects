@@ -22,3 +22,6 @@ practice_themes.each do |theme|
   practice_theme.description = theme[:description]
   practice_theme.save!
 end
+
+# 商材の初期カテゴリ（既存のカテゴリは更新しないため、再実行しても重複せず、有効・無効の状態も変わらない）
+ProductCategory.seed_defaults!

@@ -1,0 +1,5 @@
+---
+# link_toのhrefに使用しても安全なURLを返すメソッド
+# Product#official_url_for_linkは、http・httpsでホストがあるURLだけを返す（それ以外はnil）
+:url_safe_methods:
+- :official_url_for_link

@@ -13,12 +13,16 @@
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center mb-3">
             <h2 class="card-title h4 mb-0">商材管理</h2>
-            <span class="badge bg-secondary">準備中</span>
           </div>
 
-          <p class="card-text mb-0">
+          <p class="card-text">
             カテゴリ・商材名・概要・提案ポイントなど、ロープレで扱う商材の情報を登録・編集します。
           </p>
+
+          <div class="d-flex gap-2">
+            <%= link_to "商材一覧", admin_products_path, class: "btn btn-primary btn-sm" %>
+            <%= link_to "カテゴリ管理", admin_product_categories_path, class: "btn btn-outline-primary btn-sm" %>
+          </div>
         </div>
       </div>
     </div>
