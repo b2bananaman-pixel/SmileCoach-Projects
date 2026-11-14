@@ -116,6 +116,16 @@
   - テスト：601 runs、3089 assertions、0 failures、0 errors、0 skips
   - RuboCop：147ファイル・違反0件、Brakeman：警告0件、importmap audit：脆弱性なし、main CI（run 43572571382、lint・scan_js・scan_ruby・test）全4ジョブ成功
   - 本番：Renderデプロイ（10d697b）Live、ユーザーが本番ブラウザで8項目（商材あり会話、一般的なお客様の振る舞い、料金・契約条件への質問、存在しない特典を断定しない、商材なし会話、終了・保存・評価、音声認識・読み上げ・録画・録音、履歴・録画再生）を確認
+- b2bananaman-pixel/smile_coach#82 トップ画面・ログイン画面をAIロープレ中心のデザインにリニューアルする（CLOSED 2026-11-14、受け入れ条件17項目すべて完了）
+  - PR：b2bananaman-pixel/SmileCoach-Projects#120、マージコミット 25388323fe7a809a2d3402c9b6d348e17f626aad
+  - 実装：トップ画面とDeviseログイン画面を共通パーシャル（shared/_auth_landing・shared/_login_form）で共通化し、ロゴ・見出し・接客スキル6項目（笑顔・話し方・傾聴力・ヒアリング力・提案力・クロージング力）・機能紹介3項目（AIロープレで実践練習・練習を重ねて成長・練習履歴・成長の確認）を表示、未ログイン時はログインフォーム・パスワード再設定・新規登録（無料）、ログイン済み時はAIロープレ開始・練習履歴への導線
+  - 画像：ユーザー指定のキャラクター画像（smilecoach_characters.png）・スマイルアイコン（smilecoach_smile_icon.png）を無加工で使用（MD5一致を確認）、参考デザイン画像はコミットしない
+  - 既存動作：Devise認証処理（送信先・パラメータ名）・新規登録・パスワード再設定画面、AIロープレの会話・評価・保存処理は変更なし、14日自動削除の案内は維持
+  - レスポンシブ：PC・スマートフォン対応（スマートフォンではログインフォームを機能紹介より先に表示、スキルラベルを折り返し）
+  - 追加修正：Bootstrap Iconsのフォントが404でアイコンが表示されていなかったため、config/initializers/assets.rbでアセットパイプラインから配信するよう修正
+  - テスト：610 runs、3133 assertions、0 failures、0 errors、0 skips
+  - RuboCop：148ファイル・違反0件、Brakeman：警告0件、importmap audit：脆弱性なし、main CI（run 43602329443、lint・scan_js・scan_ruby・test）全4ジョブ成功
+  - 本番：ユーザーがlocalhostでPC・スマートフォン表示を確認、Renderデプロイ後の画面表示・動作を確認
 ## 10. 完了報告
 - 変更したファイルと変更内容を報告する。
 - 実行したテストコマンドと結果を報告する。
