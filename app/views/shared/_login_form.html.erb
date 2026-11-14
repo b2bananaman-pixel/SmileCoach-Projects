@@ -1,0 +1,57 @@
+<%# トップ画面とDeviseのログイン画面で共通のログインフォーム。送信先・項目名はDeviseの既定のまま %>
+<%= form_for(resource, as: :user, url: user_session_path, html: { class: "auth-login-form" }) do |f| %>
+  <%= render "devise/shared/error_messages", resource: resource %>
+
+  <div class="mb-3">
+    <%= f.label :email, "メールアドレス", class: "form-label auth-form-label" %>
+    <div class="auth-input-group">
+      <i class="bi bi-envelope auth-input-icon" aria-hidden="true"></i>
+      <%= f.email_field :email,
+            autofocus: autofocus,
+            autocomplete: "email",
+            placeholder: "メールアドレスを入力",
+            class: "form-control auth-input" %>
+    </div>
+  </div>
+
+  <div class="mb-3" data-controller="password-visibility">
+    <%= f.label :password, "パスワード", class: "form-label auth-form-label" %>
+    <div class="auth-input-group">
+      <i class="bi bi-lock auth-input-icon" aria-hidden="true"></i>
+      <%= f.password_field :password,
+            autocomplete: "current-password",
+            placeholder: "パスワードを入力",
+            class: "form-control auth-input auth-input-with-toggle",
+            data: { password_visibility_target: "input" } %>
+      <button type="button"
+              class="auth-password-toggle"
+              aria-label="パスワードを表示する"
+              data-password-visibility-target="button"
+              data-action="password-visibility#toggle">
+        <i class="bi bi-eye-slash" aria-hidden="true" data-password-visibility-target="icon"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="form-check mb-3">
+    <%= f.check_box :remember_me, class: "form-check-input" %>
+    <%= f.label :remember_me, "ログイン情報を記憶する", class: "form-check-label" %>
+  </div>
+
+  <%= button_tag type: "submit", class: "btn btn-primary auth-submit w-100" do %>
+    <span>ログイン</span>
+    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+  <% end %>
+<% end %>
+
+<p class="text-center mt-3 mb-0">
+  <%= link_to "パスワードをお忘れの方はこちら", new_user_password_path, class: "auth-text-link" %>
+</p>
+
+<div class="auth-divider" role="presentation"><span>または</span></div>
+
+<%= link_to new_user_registration_path, class: "btn auth-register-button w-100" do %>
+  <i class="bi bi-person-plus" aria-hidden="true"></i>
+  <span>新規登録（無料）</span>
+  <i class="bi bi-chevron-right" aria-hidden="true"></i>
+<% end %>

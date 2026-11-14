@@ -1,0 +1,124 @@
+<%#
+  トップ画面とDeviseのログイン画面で共通の画面
+  - 未ログイン：右側にログインフォームを表示する（resourceにはログインフォーム用のユーザーを渡す）
+  - ログイン済み：右側にAIロープレの開始と練習履歴への導線を表示する
+%>
+<% skills = [
+     { icon: "bi-emoji-smile", label: "笑顔" },
+     { icon: "bi-chat-dots", label: "話し方" },
+     { icon: "bi-ear", label: "傾聴力" },
+     { icon: "bi-search", label: "ヒアリング力" },
+     { icon: "bi-lightbulb", label: "提案力" },
+     { icon: "bi-emoji-laughing", label: "クロージング力" }
+   ] %>
+<% features = [
+     { icon: "bi-chat-dots", title: "AIロープレで実践練習", text: "リアルな接客シーンで、提案スキルを磨けます。" },
+     { icon: "bi-bar-chart-fill", title: "練習を重ねて成長", text: "繰り返しの練習で、できることが増えていきます。" },
+     { icon: "bi-clipboard-check", title: "練習履歴・成長の確認", text: "練習結果やスキルの変化をひと目で確認できます。" }
+   ] %>
+
+<div class="auth-landing">
+  <div class="container auth-landing-container">
+
+    <header class="auth-hero text-center">
+      <p class="auth-logo mb-0">
+        <span class="auth-logo-text">SmileCoach</span>
+        <%= image_tag "smilecoach_smile_icon.png",
+              alt: "SmileCoachのスマイルアイコン",
+              class: "auth-logo-icon",
+              width: 1296,
+              height: 1214,
+              data: { brand_smile_icon: true } %>
+      </p>
+      <svg class="auth-logo-smile" viewBox="0 0 120 24" aria-hidden="true" focusable="false">
+        <path d="M6 6 Q60 34 114 6" fill="none" stroke="#f9c52d" stroke-width="7" stroke-linecap="round" />
+      </svg>
+
+      <h1 class="auth-headline">
+        <span class="d-block">AIと楽しくロープレしながら</span>
+        <span class="d-block">お客様<span class="auth-headline-accent">満足度の高い提案スキル</span>を身につけましょう</span>
+      </h1>
+
+      <section aria-labelledby="auth-skills-heading">
+        <h2 id="auth-skills-heading" class="visually-hidden">ロープレで意識する接客スキル</h2>
+        <ul class="auth-skill-list list-unstyled" data-auth-skills>
+          <% skills.each do |skill| %>
+            <li class="auth-skill">
+              <i class="bi <%= skill[:icon] %>" aria-hidden="true"></i>
+              <span><%= skill[:label] %></span>
+            </li>
+          <% end %>
+        </ul>
+      </section>
+    </header>
+
+    <div class="row g-4 align-items-start">
+      <div class="col-lg-6 order-2 order-lg-1">
+        <section aria-labelledby="auth-features-heading">
+          <h2 id="auth-features-heading" class="visually-hidden">SmileCoachでできること</h2>
+          <ul class="list-unstyled mb-0" data-auth-features>
+            <% features.each do |feature| %>
+              <li class="auth-feature">
+                <div class="auth-feature-icon">
+                  <i class="bi <%= feature[:icon] %>" aria-hidden="true"></i>
+                </div>
+                <div>
+                  <h3 class="auth-feature-title"><%= feature[:title] %></h3>
+                  <p class="auth-feature-text mb-0"><%= feature[:text] %></p>
+                </div>
+              </li>
+            <% end %>
+          </ul>
+        </section>
+
+        <div class="auth-characters">
+          <%= image_tag "smilecoach_characters.png",
+                alt: "スマリー・ムクムク・アドリー博士",
+                class: "auth-characters-image",
+                width: 1601,
+                height: 982,
+                loading: "lazy",
+                data: { brand_characters: true } %>
+        </div>
+      </div>
+
+      <div class="col-lg-6 order-1 order-lg-2">
+        <div class="auth-panel">
+          <% if user_signed_in? %>
+            <h2 class="auth-panel-title">
+              <i class="bi bi-chat-heart" aria-hidden="true"></i>
+              練習を始めましょう
+            </h2>
+            <p class="auth-panel-lead">練習テーマを選んで、AIロープレで接客を練習できます。</p>
+
+            <div class="d-grid gap-3">
+              <%= link_to practice_themes_path, class: "btn btn-primary auth-submit", data: { start_practice_link: true } do %>
+                <span>AIロープレを始める</span>
+                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+              <% end %>
+              <%= link_to practices_path, class: "btn auth-register-button" do %>
+                <i class="bi bi-clipboard-check" aria-hidden="true"></i>
+                <span>練習履歴を見る</span>
+                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+              <% end %>
+            </div>
+          <% else %>
+            <h2 class="auth-panel-title">
+              <i class="bi bi-lock-fill" aria-hidden="true"></i>
+              ログイン
+            </h2>
+            <p class="auth-panel-lead">SmileCoachにログインして、<br class="d-none d-sm-inline">AIロープレの練習を始めましょう。</p>
+
+            <%= render "shared/login_form", resource: resource, autofocus: autofocus %>
+          <% end %>
+        </div>
+      </div>
+    </div>
+
+    <div class="alert alert-info auth-retention-note mt-4 mb-0">
+      <strong>📌 練習履歴について</strong><br>
+      録音・動画・文字起こしデータは、練習日から14日を過ぎると自動的に削除されます。練習履歴・分析結果は引き続き確認できます。
+    </div>
+
+  </div>
+</div>
