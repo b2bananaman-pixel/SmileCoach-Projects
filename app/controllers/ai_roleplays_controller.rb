@@ -12,6 +12,12 @@ class AiRoleplaysController < ApplicationController
   # "1abc" のような値も型変換で1として検索されてしまうため、文字列の形式を先に確認する。
   PRODUCT_ID_FORMAT = /\A[1-9][0-9]{0,18}\z/
 
+  # 会話の返答生成で受け付ける練習テーマIDの形式（正の整数）
+  PRACTICE_THEME_ID_FORMAT = /\A[1-9][0-9]{0,18}\z/
+
+  # 会話の返答生成で、商材のトークンと一緒に送られた練習テーマIDがない・形式が不正な場合のエラー
+  class InvalidPracticeThemeIdError < StandardError; end
+
   # 録画の転送先（ストレージの期限付きURL）の有効期限
   VIDEO_URL_EXPIRES_IN = 30.minutes
 
@@ -167,16 +173,43 @@ class AiRoleplaysController < ApplicationController
     }, status: :bad_gateway
   end
 
+  # 商材を選択した場合は、AIロープレ画面で発行したトークンを検証し、開始時点の商材情報で返答を生成する
   def respond
     clerk_message = params.require(:clerk_message)
     conversation_history = parsed_conversation_history
+    product_snapshot = verified_respond_product_snapshot
 
     ai_response = AiRoleplayResponseService.new(
       clerk_message: clerk_message,
-      conversation_history: conversation_history
+      conversation_history: conversation_history,
+      product_snapshot: product_snapshot
     ).call
 
     render json: ai_response
+  rescue AiRoleplayProductSnapshotToken::InvalidTokenError => e
+    Rails.logger.warn(
+      "[AiRoleplaysController#respond] Invalid product snapshot token"
+    )
+
+    render json: {
+      error: e.message
+    }, status: :unprocessable_entity
+  rescue InvalidPracticeThemeIdError
+    Rails.logger.warn(
+      "[AiRoleplaysController#respond] Invalid practice theme id"
+    )
+
+    render json: {
+      error: "練習テーマの指定が不正です"
+    }, status: :unprocessable_entity
+  rescue ActiveRecord::RecordNotFound
+    Rails.logger.warn(
+      "[AiRoleplaysController#respond] Practice theme not found"
+    )
+
+    render json: {
+      error: "練習テーマが見つかりません"
+    }, status: :not_found
   rescue ActionController::ParameterMissing, ArgumentError => e
     render json: { error: e.message }, status: :unprocessable_entity
   rescue JSON::ParserError => e
@@ -259,6 +292,29 @@ class AiRoleplaysController < ApplicationController
     raise RoleplayProductNotFoundError if product.nil?
 
     { product: product, product_snapshot: result.product_snapshot }
+  end
+
+  # 会話の返答生成で使う商材情報は、AIロープレ画面で発行したトークンの内容だけを使う
+  #
+  # ブラウザから送られたproduct_id・product_snapshotは使用しない。
+  # 開始時点の商材情報で会話を続けるため、会話のたびに商材をDBから取得しない。
+  # そのため、練習中に商材が編集・非公開・カテゴリ無効になっても、開始時点の内容で返答を生成する。
+  def verified_respond_product_snapshot
+    token = params[:product_snapshot_token]
+
+    return if token.nil? || token == ""
+
+    practice_theme_id = params[:practice_theme_id]
+
+    unless practice_theme_id.is_a?(String) && practice_theme_id.match?(PRACTICE_THEME_ID_FORMAT)
+      raise InvalidPracticeThemeIdError
+    end
+
+    AiRoleplayProductSnapshotToken.verify!(
+      token,
+      user: current_user,
+      practice_theme: PracticeTheme.find(practice_theme_id)
+    ).product_snapshot
   end
 
   # 評価に失敗してもセッション保存は成功扱いとするため、例外はここで処理する
