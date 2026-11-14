@@ -1,0 +1,351 @@
+// ログイン後のマイページ（app/views/mypages/show.html.erb）
+// 配色はIssue #82のトップ画面（_auth_landing.scss）に合わせる
+$mypage-navy: #13235b;
+$mypage-blue: #1463e6;
+$mypage-blue-dark: #0b4fc4;
+$mypage-sky: #e8f3ff;
+$mypage-sky-border: #cfe3fb;
+$mypage-text: #2b3550;
+$mypage-muted: #5f6b85;
+$mypage-red: #c62828;
+
+// カードの枠線（3枚とも2px）
+$mypage-start-border: #b8d7fa;
+$mypage-history-border: #cbd5e1;
+
+// 練習履歴（白と淡いグレー）
+$mypage-gray-bg: #f5f6f8;
+
+// アドリー博士からのひとこと（淡いクリーム色とオレンジ系）
+$mypage-cream: #fff8ed;
+$mypage-cream-border: #f3d7ab;
+$mypage-brown: #804516;
+$mypage-brown-dark: #4a3527;
+
+// マイページのフォント（Webフォントは読み込まず、端末にインストールされたBIZ UDPゴシックを使う）
+// BIZ UDPゴシックがない端末では、端末の日本語ゴシック体、最後にsans-serifで表示する
+$mypage-font-family: "BIZ UDPGothic", "BIZ UDPゴシック", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+
+.mypage {
+  background: linear-gradient(180deg, #ffffff 0%, $mypage-sky 60%, #f4f9ff 100%);
+  color: $mypage-text;
+  font-family: $mypage-font-family;
+  font-weight: 400;
+  padding: 2rem 0 3rem;
+  overflow-x: hidden;
+}
+
+.mypage-container {
+  max-width: 880px;
+}
+
+// ウェルカムメッセージ
+// キャラクター画像は縦横比を保ったまま縮小だけ行う（変形・色変更はしない）
+.mypage-character {
+  display: block;
+  flex: 0 0 auto;
+  height: auto;
+  max-width: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+.mypage-welcome {
+  margin-bottom: 1.5rem;
+}
+
+.mypage-welcome-heading {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem; // 20px
+  margin-bottom: 0.4rem;
+}
+
+.mypage-welcome-icon {
+  width: 56px;
+}
+
+.mypage-welcome-title {
+  color: $mypage-navy;
+  min-width: 0;
+  font-size: 1.625rem; // 26px
+  font-weight: 700;
+  line-height: 1.4;
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+}
+
+.mypage-welcome-lead {
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+// AIロープレ開始カード（PC：左に説明文とボタン、右にムクムク）
+.mypage-start-card {
+  display: grid;
+  // ムクムクを説明文のすぐ右に置く（カードが広くても文字から離さない）
+  grid-template-columns: minmax(0, max-content) auto;
+  grid-template-areas:
+    "body character"
+    "action character";
+  justify-content: start;
+  align-items: center;
+  column-gap: 1.25rem; // 20px
+  row-gap: 1.25rem;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  border: 2px solid $mypage-start-border;
+  border-radius: 1.25rem;
+  background: linear-gradient(135deg, #dcecff 0%, $mypage-sky 100%);
+  box-shadow: 0 4px 16px rgba(20, 99, 230, 0.08);
+}
+
+.mypage-start-body {
+  grid-area: body;
+  min-width: 0;
+}
+
+.mypage-start-action {
+  grid-area: action;
+  min-width: 0;
+}
+
+.mypage-start-character {
+  grid-area: character;
+  width: 150px;
+}
+
+.mypage-start-title {
+  color: $mypage-navy;
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+.mypage-start-title-accent {
+  color: $mypage-red;
+}
+
+.mypage-start-text {
+  font-size: 1.05rem;
+}
+
+.mypage-start-button {
+  position: relative;
+  max-width: 100%;
+  box-shadow: 0 6px 16px rgba(20, 99, 230, 0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16rem;
+  padding: 0.8rem 3rem;
+  border: 0;
+  border-radius: 0.7rem;
+  background: linear-gradient(180deg, $mypage-blue 0%, $mypage-blue-dark 100%);
+  font-weight: 700;
+  font-size: 1.15rem;
+
+  .bi-chevron-right {
+    position: absolute;
+    top: 50%;
+    right: 1rem;
+    transform: translateY(-50%);
+  }
+}
+
+// 練習履歴と最近の練習のカード
+.mypage-history-card {
+  padding: 1.5rem;
+  border: 2px solid $mypage-history-border;
+  border-radius: 1.25rem;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+
+.mypage-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.mypage-history-title {
+  color: $mypage-navy;
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 0;
+
+  .bi {
+    color: $mypage-blue;
+  }
+}
+
+.mypage-history-link {
+  flex: 0 0 auto;
+  color: $mypage-blue;
+  font-weight: 500;
+  text-decoration: none;
+
+  &:hover,
+  &:focus {
+    text-decoration: underline;
+  }
+}
+
+.mypage-recent-label {
+  color: $mypage-muted;
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.mypage-recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 0.9rem;
+  background: $mypage-gray-bg;
+}
+
+.mypage-recent-info {
+  min-width: 0;
+}
+
+.mypage-recent-theme {
+  color: $mypage-navy;
+  font-size: 1.1rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.mypage-recent-date {
+  color: $mypage-muted;
+}
+
+.mypage-recent-button {
+  flex: 0 0 auto;
+  border: 2px solid $mypage-blue;
+  border-radius: 0.7rem;
+  background: #fff;
+  color: $mypage-blue;
+  font-weight: 700;
+
+  &:hover,
+  &:focus {
+    background: $mypage-sky;
+    color: $mypage-blue-dark;
+    border-color: $mypage-blue-dark;
+  }
+}
+
+.mypage-recent-empty {
+  padding: 1rem;
+  border-radius: 0.9rem;
+  background: $mypage-gray-bg;
+}
+
+// アドリー博士からのひとこと（左に博士、右にメッセージ）
+.mypage-advice-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  margin-top: 1.5rem;
+  border: 2px solid $mypage-cream-border;
+  border-radius: 1.25rem;
+  background: $mypage-cream;
+  box-shadow: 0 2px 8px rgba(128, 69, 22, 0.05);
+}
+
+.mypage-advice-character {
+  width: 110px;
+}
+
+.mypage-advice-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.mypage-advice-title {
+  color: $mypage-brown;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+// メッセージはカードの背景と一体化させる
+.mypage-advice-message {
+  color: $mypage-brown-dark;
+  font-weight: 500;
+  font-size: 1.02rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+// スマートフォン
+@media (max-width: 575.98px) {
+  .mypage {
+    padding: 1.25rem 0 2rem;
+  }
+
+  .mypage-welcome-heading {
+    gap: 1rem; // 16px
+  }
+
+  .mypage-welcome-title {
+    font-size: 1.375rem; // 22px
+  }
+
+  .mypage-welcome-icon {
+    width: 44px;
+  }
+
+  // スマートフォン：上段に説明文とムクムク、下段に全幅のボタン（説明文の列は文字幅に合わせ、ムクムクを離さない）
+  .mypage-start-card {
+    grid-template-areas:
+      "body character"
+      "action action";
+    column-gap: 1rem; // 16px
+    row-gap: 1rem;
+    padding: 1.5rem 1.1rem;
+  }
+
+  .mypage-start-character {
+    width: 72px;
+  }
+
+  .mypage-start-title {
+    font-size: 1.25rem;
+  }
+
+  .mypage-start-button {
+    width: 100%;
+    min-width: 0;
+    padding: 0.8rem 2.5rem;
+  }
+
+  .mypage-advice-card {
+    gap: 0.75rem;
+    padding: 1rem;
+  }
+
+  .mypage-advice-character {
+    width: 72px;
+  }
+
+  .mypage-history-card {
+    padding: 1.25rem 1rem;
+  }
+
+  .mypage-recent-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mypage-recent-button {
+    width: 100%;
+  }
+}

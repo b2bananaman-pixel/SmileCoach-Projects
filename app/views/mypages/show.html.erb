@@ -1,0 +1,109 @@
+<div class="mypage">
+  <div class="container mypage-container">
+
+    <section class="mypage-welcome" aria-labelledby="mypage-welcome-heading">
+      <%# 文字とアイコンをひとまとまりにして、画面幅が広くても離れないようにする %>
+      <div class="mypage-welcome-heading">
+        <h1 id="mypage-welcome-heading" class="mypage-welcome-title" data-mypage-welcome>
+          <%= current_user.name %>さん、おかえりなさい！
+        </h1>
+        <%= image_tag "smilecoach_smile_icon.png",
+              alt: "スマイルアイコン",
+              class: "mypage-character mypage-welcome-icon",
+              width: 1296,
+              height: 1214,
+              data: { mypage_smile_icon: true } %>
+      </div>
+      <p class="mypage-welcome-lead mb-0">今日もAIロープレで接客スキルを磨きましょう。</p>
+    </section>
+
+    <section class="mypage-start-card" aria-labelledby="mypage-start-heading">
+      <div class="mypage-start-body">
+        <h2 id="mypage-start-heading" class="mypage-start-title"><span class="mypage-start-title-accent" data-mypage-start-accent>AIロープレ</span>で練習する</h2>
+        <p class="mypage-start-text mb-0">お客様との会話を実践的に練習しましょう。</p>
+      </div>
+      <div class="mypage-start-action">
+        <%= link_to practice_themes_path, class: "btn btn-primary mypage-start-button", data: { start_practice_link: true } do %>
+          <span>AIロープレを始める</span>
+          <i class="bi bi-chevron-right" aria-hidden="true"></i>
+        <% end %>
+      </div>
+      <%= image_tag "characters/mukumuku.png",
+            alt: "ムクムク",
+            class: "mypage-character mypage-start-character",
+            width: 710,
+            height: 717,
+            data: { mypage_character: "mukumuku" } %>
+    </section>
+
+    <section class="mypage-history-card" aria-labelledby="mypage-history-heading">
+      <div class="mypage-history-header">
+        <h2 id="mypage-history-heading" class="mypage-history-title">
+          <i class="bi bi-clipboard-check" aria-hidden="true"></i>
+          練習履歴
+        </h2>
+        <%= link_to practices_path, class: "mypage-history-link", data: { practice_history_link: true } do %>
+          すべて見る
+          <i class="bi bi-chevron-right" aria-hidden="true"></i>
+        <% end %>
+      </div>
+
+      <h3 class="mypage-recent-label">最近の練習</h3>
+
+      <% if @recent_practice.nil? %>
+        <p class="mypage-recent-empty mb-0" data-mypage-recent-empty>
+          まだ練習履歴がありません。最初のAIロープレに挑戦しましょう！
+        </p>
+      <% else %>
+        <% ai_roleplay = @recent_practice.is_a?(AiRoleplaySession) %>
+        <div class="mypage-recent-item"
+             data-mypage-recent-practice="<%= ai_roleplay ? "ai_roleplay" : "practice" %>"
+             data-record-id="<%= @recent_practice.id %>">
+          <div class="mypage-recent-info">
+            <span class="badge <%= ai_roleplay ? "bg-success" : "bg-secondary" %> mb-1">
+              <%= ai_roleplay ? "AIロープレ" : "通常録画" %>
+            </span>
+            <p class="mypage-recent-theme mb-0" data-mypage-recent-theme>
+              <%= @recent_practice.practice_theme.name %>
+            </p>
+            <p class="mypage-recent-date mb-0">
+              <time datetime="<%= @recent_practice.created_at.iso8601 %>" data-mypage-recent-date>
+                <%= @recent_practice.created_at.strftime("%Y/%m/%d %H:%M") %>
+              </time>
+            </p>
+          </div>
+
+          <% if ai_roleplay %>
+            <%= link_to "評価結果を見る",
+                        evaluation_ai_roleplay_path(@recent_practice),
+                        class: "btn mypage-recent-button" %>
+          <% elsif @recent_practice.analysis.present? %>
+            <%= link_to "分析結果を見る",
+                        analysis_path(@recent_practice.analysis),
+                        class: "btn mypage-recent-button" %>
+          <% end %>
+        </div>
+      <% end %>
+    </section>
+
+    <section class="mypage-advice-card" aria-labelledby="mypage-advice-heading" data-mypage-advice>
+      <%= image_tag "characters/adory_professor.png",
+            alt: "アドリー博士",
+            class: "mypage-character mypage-advice-character",
+            width: 807,
+            height: 737,
+            loading: "lazy",
+            data: { mypage_character: "adory_professor" } %>
+      <div class="mypage-advice-body">
+        <h2 id="mypage-advice-heading" class="mypage-advice-title">
+          <i class="bi bi-lightbulb" aria-hidden="true"></i>
+          アドリー博士からのひとこと
+        </h2>
+        <p class="mypage-advice-message mb-0" data-mypage-advice-message>
+          今日の練習では、お客様の話を最後まで聴くことを意識してみよう！
+        </p>
+      </div>
+    </section>
+
+  </div>
+</div>
