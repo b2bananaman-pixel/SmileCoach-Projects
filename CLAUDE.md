@@ -93,6 +93,14 @@
   - テスト：541 runs、2587 assertions、0 failures、0 errors、0 skips
   - RuboCop：違反0件、Brakeman：警告0件、CI（lint・scan_js・scan_ruby・test）全4ジョブ成功
   - 本番：Renderデプロイ・DBマイグレーション・動作確認成功、既存AIロープレの会話・結果表示を確認
+- b2bananaman-pixel/smile_coach#79 AIロープレで商材を選択・保存できるようにする（CLOSED 2026-11-14、受け入れ条件78項目すべて完了）
+  - PR：b2bananaman-pixel/SmileCoach-Projects#114、マージコミット 8e44645abbce51a66f4bac02bcc53d82d6d03b66
+  - 実装：AIロープレ開始時の商材の任意選択（公開中かつ有効カテゴリの商材のみ、非公開・無効カテゴリの商材IDは404）、商材IDと開始時点の商材情報スナップショットの保存、暗号化トークンによる開始時点の情報の保護
+  - 既存動作：商材未選択時は従来どおり動作、AI会話生成・評価ロジックは変更なし
+  - テスト：580 runs、2810 assertions、0 failures、0 errors、0 skips
+  - RuboCop：147ファイル・違反0件、Brakeman：CI設定で警告0件、main CI（lint・scan_js・scan_ruby・test）全4ジョブ成功
+  - 本番：Renderデプロイ・マイグレーション20261108110000成功、商材あり・なしのAIロープレ開始、商材名表示、保存、評価結果表示、非公開・無効カテゴリの404を確認
+  - 注記：本番DBのproduct_id・product_snapshotは直接照会していない。テスト件数・RuboCop件数は過去の確認値で、記録作成時に再実行・CIログでの照合はしていない
 ## 10. 完了報告
 - 変更したファイルと変更内容を報告する。
 - 実行したテストコマンドと結果を報告する。
