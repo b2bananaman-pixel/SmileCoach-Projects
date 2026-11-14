@@ -23,6 +23,30 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # 実際のGroq APIへ通信せず、送信したリクエストの本文を記録するHTTPクライアント
+  class FakeCapturingGroqHttpClient
+    attr_reader :request_bodies
+
+    def initialize
+      @request_bodies = []
+    end
+
+    def start(_host, _port, use_ssl:)
+      yield self
+    end
+
+    def request(request)
+      @request_bodies << JSON.parse(request.body)
+
+      content = { reply: "テスト用の返答です。", customer_state: "neutral", contract_intent: "none",
+                  reason: "テスト", conversation_end: false, end_reason: nil }.to_json
+      response = Net::HTTPOK.new("1.1", "200", "OK")
+      response.instance_variable_set(:@read, true)
+      response.instance_variable_set(:@body, { choices: [ { message: { content: content } } ] }.to_json)
+      response
+    end
+  end
+
   VIDEO_FIXTURE = Rails.root.join("test/fixtures/files/test_volume.webm")
 
   setup do
@@ -247,7 +271,8 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
 
     AiRoleplayResponseService.stub(
       :new,
-      ->(clerk_message:, conversation_history:) {
+      ->(clerk_message:, conversation_history:, product_snapshot:) {
+        assert_nil product_snapshot
         assert_equal(
           "今日はスマートフォンのお乗り換えをご検討ですか？",
           clerk_message
@@ -311,7 +336,8 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
 
     AiRoleplayResponseService.stub(
       :new,
-      ->(clerk_message:, conversation_history:) {
+      ->(clerk_message:, conversation_history:, product_snapshot:) {
+        assert_nil product_snapshot
         assert_equal(
           "ご家族は何人で利用されていますか？",
           clerk_message
@@ -421,7 +447,8 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
 
     AiRoleplayResponseService.stub(
       :new,
-      ->(clerk_message:, conversation_history:) {
+      ->(clerk_message:, conversation_history:, product_snapshot:) {
+        assert_nil product_snapshot
         assert_equal "こんにちは。", clerk_message
         assert_equal [], conversation_history
 
@@ -2171,6 +2198,214 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
 
   private
 
+  test "商材を選択したAIロープレでは、画面で発行したトークンの開始時点の商材情報で返答を生成する" do
+    sign_in @user
+    product = products(:published_card)
+
+    get ai_roleplay_practice_theme_path(practice_themes(:one), product_id: product.id)
+    token = product_snapshot_token_from_page
+
+    snapshots = capture_respond_product_snapshots do
+      post_respond(product_snapshot_token: token, practice_theme_id: practice_themes(:one).id.to_s)
+    end
+
+    assert_response :success
+    assert_equal "テスト用の返答です。", response.parsed_body["reply"]
+    assert_equal 1, snapshots.length
+    assert_equal product.id, snapshots.first.dig("product", "id")
+    assert_equal "ポイントカード", snapshots.first.dig("product", "name")
+    assert_equal "カード", snapshots.first.dig("category", "name")
+  end
+
+  test "商材を選択したAIロープレのシステムプロンプトに、商材情報と一般的な顧客としての指示が含まれる" do
+    sign_in @user
+    product = products(:fiber)
+    product.update!(published: true, proposal_points: "社内向けの提案ポイント", confirmation_items: "社内向けの確認事項")
+
+    http_client = FakeCapturingGroqHttpClient.new
+    original_api_key = ENV["GROQ_API_KEY"]
+    ENV["GROQ_API_KEY"] = "test-api-key"
+
+    begin
+      # 実際のGroq APIへ通信せず、送信したリクエストの本文を記録する
+      Net::HTTP.stub(:start, ->(host, port, use_ssl:, &block) { http_client.start(host, port, use_ssl: use_ssl, &block) }) do
+        post_respond(product_snapshot_token: product_snapshot_token_for(product),
+                     practice_theme_id: practice_themes(:one).id.to_s)
+      end
+    ensure
+      ENV["GROQ_API_KEY"] = original_api_key
+    end
+
+    assert_response :success
+
+    system_prompt = http_client.request_bodies.sole["messages"].first["content"]
+
+    assert_includes system_prompt, "商材名：光回線プラン"
+    assert_includes system_prompt, "料金・契約条件：月額5,000円（2年契約）"
+    assert_includes system_prompt, "この商材について基本的なことしか知らない一般的な顧客です。"
+    assert_not_includes system_prompt, "携帯電話ショップ"
+    assert_not_includes system_prompt, "社内向けの提案ポイント"
+    assert_not_includes system_prompt, "社内向けの確認事項"
+    assert_not_includes system_prompt, "https://example.com/fiber"
+  end
+
+  test "商材を選択しない場合は、練習テーマIDがあっても従来どおり商材情報なしで返答を生成する" do
+    sign_in @user
+
+    [ {}, { product_snapshot_token: "" }, { practice_theme_id: practice_themes(:one).id.to_s } ].each do |params|
+      snapshots = capture_respond_product_snapshots do
+        post_respond(**params)
+      end
+
+      assert_response :success, params.inspect
+      assert_equal [ nil ], snapshots, params.inspect
+    end
+  end
+
+  test "改ざん・期限切れ・別ユーザー・別練習テーマのトークンでは422を返し、返答を生成しない" do
+    sign_in @user
+    product = products(:published_card)
+
+    valid_token = product_snapshot_token_for(product)
+    tampered_token = valid_token.dup
+    tampered_token[10] = tampered_token[10] == "A" ? "B" : "A"
+    expired_token = travel_to(2.hours.ago - 1.second) { product_snapshot_token_for(product) }
+
+    tokens = {
+      "改ざん" => tampered_token,
+      "形式不正" => "invalid-token",
+      "期限切れ" => expired_token,
+      "別ユーザー" => product_snapshot_token_for(product, user: users(:two)),
+      "別練習テーマ" => product_snapshot_token_for(product, practice_theme: practice_themes(:two))
+    }
+
+    tokens.each do |label, token|
+      snapshots = capture_respond_product_snapshots do
+        post_respond(product_snapshot_token: token, practice_theme_id: practice_themes(:one).id.to_s)
+      end
+
+      assert_response :unprocessable_entity, label
+      assert_equal({ "error" => "商材情報のトークンが不正または期限切れです" }, response.parsed_body, label)
+      assert_empty snapshots, label
+    end
+  end
+
+  test "トークンがあり、練習テーマIDがない・形式が不正な場合は422を返し、返答を生成しない" do
+    sign_in @user
+    token = product_snapshot_token_for(products(:published_card))
+    practice_theme_id = practice_themes(:one).id
+
+    [ nil, "", "abc", "#{practice_theme_id}abc", "-#{practice_theme_id}", "0", "#{practice_theme_id}.0",
+      " #{practice_theme_id}", "9" * 20, [ practice_theme_id.to_s ], { "id" => practice_theme_id.to_s } ].each do |value|
+      params = { product_snapshot_token: token }
+      params[:practice_theme_id] = value unless value.nil?
+
+      snapshots = capture_respond_product_snapshots do
+        post_respond(**params)
+      end
+
+      assert_response :unprocessable_entity, value.inspect
+      assert_equal({ "error" => "練習テーマの指定が不正です" }, response.parsed_body, value.inspect)
+      assert_empty snapshots, value.inspect
+    end
+  end
+
+  test "トークンがあり、存在しない練習テーマIDの場合は404を返し、返答を生成しない" do
+    sign_in @user
+    token = product_snapshot_token_for(products(:published_card))
+
+    snapshots = capture_respond_product_snapshots do
+      post_respond(product_snapshot_token: token, practice_theme_id: (PracticeTheme.maximum(:id) + 1).to_s)
+    end
+
+    assert_response :not_found
+    assert_equal({ "error" => "練習テーマが見つかりません" }, response.parsed_body)
+    assert_empty snapshots
+  end
+
+  test "返答生成では、ブラウザから送られたproduct_id・product_snapshotを使用しない" do
+    sign_in @user
+    forged_params = { product_id: products(:fiber).id.to_s, product_snapshot: { product: { name: "偽の商材" } }.to_json }
+
+    snapshots = capture_respond_product_snapshots do
+      post_respond(product_snapshot_token: product_snapshot_token_for(products(:published_card)),
+                   practice_theme_id: practice_themes(:one).id.to_s, **forged_params)
+    end
+
+    assert_response :success
+    assert_equal "ポイントカード", snapshots.sole.dig("product", "name")
+
+    snapshots = capture_respond_product_snapshots do
+      post_respond(**forged_params)
+    end
+
+    assert_response :success
+    assert_equal [ nil ], snapshots
+  end
+
+  test "練習中に商材の編集・非公開・カテゴリ無効・削除があっても、商材をDBから取得せず開始時点の商材情報で返答を生成する" do
+    changes = {
+      "編集" => ->(product) { product.update!(name: "編集後の名前", summary: "編集後の概要", pricing: "編集後の料金") },
+      "非公開" => ->(product) { product.update!(published: false) },
+      "カテゴリ無効" => ->(product) { product.product_category.update!(active: false) },
+      "削除" => ->(product) { product.destroy! }
+    }
+
+    changes.each do |label, change|
+      sign_in @user
+      # 前の確認でカテゴリを無効にしているため、有効に戻してから開始時の商材を登録する
+      product_categories(:card).update!(active: true)
+      product = Product.create!(product_category: product_categories(:card), name: "開始時の商材", summary: "開始時の概要")
+      product.update!(published: true)
+      token = product_snapshot_token_for(product)
+
+      change.call(product)
+
+      product_queries = []
+      subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+        product_queries << payload[:sql] if payload[:sql].match?(/\b(products|product_categories)\b/)
+      end
+
+      snapshots = begin
+        capture_respond_product_snapshots do
+          post_respond(product_snapshot_token: token, practice_theme_id: practice_themes(:one).id.to_s)
+        end
+      ensure
+        ActiveSupport::Notifications.unsubscribe(subscriber)
+      end
+
+      assert_response :success, label
+      assert_empty product_queries, label
+      assert_equal "開始時の商材", snapshots.sole.dig("product", "name"), label
+      assert_equal "開始時の概要", snapshots.sole.dig("product", "summary"), label
+      assert_nil snapshots.sole.dig("product", "pricing"), label
+    end
+  end
+
+  test "返答生成のエラーメッセージとログに、トークンや商材情報を含めない" do
+    sign_in @user
+    product = products(:published_card)
+    token = product_snapshot_token_for(product, practice_theme: practice_themes(:two))
+
+    log = StringIO.new
+    original_logger = Rails.logger
+    Rails.logger = ActiveSupport::Logger.new(log)
+
+    begin
+      post_respond(product_snapshot_token: token, practice_theme_id: practice_themes(:one).id.to_s)
+    ensure
+      Rails.logger = original_logger
+    end
+
+    assert_response :unprocessable_entity
+    assert_includes log.string, "[AiRoleplaysController#respond] Invalid product snapshot token"
+
+    [ token, "ポイントカード", "買い物でポイントが貯まるクレジットカード。" ].each do |text|
+      assert_not_includes response.body, text
+      assert_not_includes log.string, text
+    end
+  end
+
   def attach_video(session)
     session.video.attach(
       io: StringIO.new(File.binread(VIDEO_FIXTURE)),
@@ -2239,6 +2474,32 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     params.merge!(extra_params)
 
     post ai_roleplays_path, params: params
+  end
+
+  def post_respond(clerk_message: "本日はどのようなご用件ですか？", **params)
+    post ai_roleplays_respond_path, params: { clerk_message: clerk_message }.merge(params)
+  end
+
+  # AI顧客返答サービスに渡された商材情報を記録し、Groq APIへは通信しない
+  def capture_respond_product_snapshots(&block)
+    snapshots = []
+    roleplay_service = Struct.new(:reply) do
+      def call
+        { "reply" => reply, "customer_state" => "neutral", "contract_intent" => "none",
+          "reason" => "テスト", "conversation_end" => false, "end_reason" => nil }
+      end
+    end
+
+    AiRoleplayResponseService.stub(
+      :new,
+      ->(clerk_message:, conversation_history:, product_snapshot:) {
+        snapshots << product_snapshot
+        roleplay_service.new("テスト用の返答です。")
+      },
+      &block
+    )
+
+    snapshots
   end
 
   def product_snapshot_token_for(product, user: @user, practice_theme: practice_themes(:one))

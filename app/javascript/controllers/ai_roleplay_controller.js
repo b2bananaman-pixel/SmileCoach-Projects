@@ -1116,6 +1116,19 @@ export default class extends Controller {
       )
     )
 
+    // 商材を選択した場合だけ、開始時点の商材情報のトークンを送り、サーバー側で検証して会話に反映する
+    if (this.productSnapshotTokenValue) {
+      formData.append(
+        "product_snapshot_token",
+        this.productSnapshotTokenValue
+      )
+
+      formData.append(
+        "practice_theme_id",
+        this.practiceThemeIdValue
+      )
+    }
+
     const response =
       await fetch(
         this.respondUrlValue,
