@@ -27,6 +27,7 @@ class LoginPageTest < ActionDispatch::IntegrationTest
 
     assert_redirected_to root_path
     follow_redirect!
+    assert_select "[data-mypage-welcome]", text: "#{user.name}さん、おかえりなさい！"
     assert_select "a[data-start-practice-link][href='#{practice_themes_path}']"
   end
 
