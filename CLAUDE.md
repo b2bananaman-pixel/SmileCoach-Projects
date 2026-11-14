@@ -101,6 +101,13 @@
   - RuboCop：147ファイル・違反0件、Brakeman：CI設定で警告0件、main CI（lint・scan_js・scan_ruby・test）全4ジョブ成功
   - 本番：Renderデプロイ・マイグレーション20261108110000成功、商材あり・なしのAIロープレ開始、商材名表示、保存、評価結果表示、非公開・無効カテゴリの404を確認
   - 注記：本番DBのproduct_id・product_snapshotは直接照会していない。テスト件数・RuboCop件数は過去の確認値で、記録作成時に再実行・CIログでの照合はしていない
+- b2bananaman-pixel/smile_coach#80 GitHub ActionsのCI実行環境をubuntu-24.04に固定する（CLOSED 2026-11-14、受け入れ条件8項目すべて完了）
+  - PR：b2bananaman-pixel/SmileCoach-Projects#116、マージコミット 525d631abfce9ef8288dbbcaacf7a2abd0b1eae5
+  - 原因：ubuntu-latestがubuntu-26.04に切り替わり、Ruby 3.2.2をセットアップできず全4ジョブが失敗（Unavailable version 3.2.2 for ruby on ubuntu-26.04）
+  - 実装：.github/workflows/ci.ymlの4ジョブ（scan_ruby・scan_js・lint・test）のruns-onをubuntu-latestからubuntu-24.04に変更（4行のみ）
+  - 既存への影響：Rubyバージョン（.ruby-version：ruby-3.2.2）・Gemfile・Dockerfile・アプリケーションコードは変更なし
+  - テスト：580 runs、2810 assertions、0 failures、0 errors、0 skips（CIのtestジョブ）
+  - CI：PR #116（run 43567623528）・main（run 43567785994）・最新mainを取り込んだPR #115（run 43568118701）で、いずれもubuntu-24.04上でlint・scan_js・scan_ruby・test全4ジョブ成功、Brakeman警告0件、importmap audit脆弱性なし
 - b2bananaman-pixel/smile_coach#81 AIロープレの会話に商材情報を反映する（CLOSED 2026-11-14、受け入れ条件53項目すべて完了）
   - PR：b2bananaman-pixel/SmileCoach-Projects#117、マージコミット 10d697b98bab439e9b6e8042da9424daddcd495e
   - 実装：検証済みトークンの開始時点スナップショットをお客様役AIへ渡す（DB再取得なし）、A案「一般的なお客様」のプロンプト（お客様設定・知識レベル・商材情報・応答ルールをメソッド分割）、渡す項目と文字数上限（カテゴリ50・商材名/メーカー100・概要/特徴/料金・契約条件/注意事項500）、提案ポイント・確認すべき事項・URL・ID等は渡さない
