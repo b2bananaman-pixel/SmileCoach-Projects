@@ -1,6 +1,10 @@
 @import 'bootstrap/scss/bootstrap';
+// Bootstrap Iconsのフォントは、アセットパイプライン（config/initializers/assets.rb）から配信する
+$bootstrap-icons-font-src: url("bootstrap-icons.woff2") format("woff2"),
+                           url("bootstrap-icons.woff") format("woff");
 @import 'bootstrap-icons/font/bootstrap-icons';
 
 .brand-title {
   color: #4A90E2;
 }
+@import 'auth_landing';
