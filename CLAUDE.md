@@ -126,6 +126,17 @@
   - テスト：610 runs、3133 assertions、0 failures、0 errors、0 skips
   - RuboCop：148ファイル・違反0件、Brakeman：警告0件、importmap audit：脆弱性なし、main CI（run 43602329443、lint・scan_js・scan_ruby・test）全4ジョブ成功
   - 本番：ユーザーがlocalhostでPC・スマートフォン表示を確認、Renderデプロイ後の画面表示・動作を確認
+- b2bananaman-pixel/smile_coach#83 ログイン後のマイページを新設し、AIロープレへの導線を整理する（CLOSED 2026-11-15、チェック項目59項目すべて完了）
+  - PR：b2bananaman-pixel/SmileCoach-Projects#122、マージコミット 307edb1e8ab83a7a9df32a8d657171902bc4c8a2
+  - 実装：ログイン前後の画面分離（config/routes.rbの`authenticated :user`でログイン済みの / をmypages#showに、未ログインはIssue #82のトップ画面のまま）、ログイン・ログアウト後の遷移先はDevise既定のroot_pathのまま
+  - マイページ：current_user.nameをエスケープした「〇〇さん、おかえりなさい！」とスマイルアイコン、AIロープレ開始カード（「AIロープレ」を赤字、「AIロープレを始める」から既存の練習テーマ一覧へ）、練習履歴カード（「すべて見る」から既存の練習履歴へ）、アドリー博士からのひとこと
+  - 最近の練習：AIロープレ（AiRoleplaySession）と通常録画（ai_roleplay_session_idがnilのPractice）のうち本人の最新1件を表示（作成日時が同じ場合はIDの大きいほう）、テーマ名・日本時間の日時、評価結果・分析結果への既存導線、記録がない場合の案内文、件数によらずクエリ数一定
+  - キャラクター：ユーザー指定のムクムク（開始カード）・アドリー博士（ひとこと）を無加工で使用、スマイルアイコンはIssue #82の画像を再利用、smary.pngは未使用・未コミット
+  - デザイン：Issue #82の青・白基調を継承、練習履歴は白と淡いグレー、ひとことは淡いクリーム色、カード枠線2px、フォントはBIZ UDPGothic（Webフォントは読み込まず、ない端末は日本語ゴシック体にフォールバック）、PC・スマートフォン対応
+  - 既存動作：Devise認証処理、AIロープレの会話・評価・録画・保存処理、ログイン前トップ画面は変更なし、DBテーブルの追加なし
+  - テスト：629 runs、3215 assertions、0 failures、0 errors、0 skips
+  - Brakeman：警告0件、importmap audit：脆弱性なし、main CI（run 43610825131、lint・scan_js・scan_ruby・test）全4ジョブ成功
+  - 本番：Renderデプロイ後、ユーザーが本番ブラウザでログイン前トップ画面、ログイン後マイページ、キャラクター表示、AIロープレへの導線、練習履歴、評価結果、ログアウト、スマートフォン表示を確認
 ## 10. 完了報告
 - 変更したファイルと変更内容を報告する。
 - 実行したテストコマンドと結果を報告する。
