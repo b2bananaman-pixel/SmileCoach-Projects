@@ -137,6 +137,16 @@
   - テスト：629 runs、3215 assertions、0 failures、0 errors、0 skips
   - Brakeman：警告0件、importmap audit：脆弱性なし、main CI（run 43610825131、lint・scan_js・scan_ruby・test）全4ジョブ成功
   - 本番：Renderデプロイ後、ユーザーが本番ブラウザでログイン前トップ画面、ログイン後マイページ、キャラクター表示、AIロープレへの導線、練習履歴、評価結果、ログアウト、スマートフォン表示を確認
+- b2bananaman-pixel/smile_coach#85 source-map-jsのHigh脆弱性を修正する（CLOSED 2026-11-17、チェック項目18項目すべて完了）
+  - PR：b2bananaman-pixel/SmileCoach-Projects#124、マージコミット c37e633d2746e1050eb002bafcba0fc1847e4fff
+  - 原因：Sass 1.77.8の間接依存source-map-js 1.2.1のHigh脆弱性 GHSA-68fv-2mgg-jv7q（調査はb2bananaman-pixel/smile_coach#84）
+  - 実装：source-map-jsを1.2.1から1.2.2へ更新、Sass 1.77.8は維持、変更ファイルはpackage-lock.jsonのみ（version・resolved・integrityの3項目）、package.json・yarn.lockは変更なし
+  - 注記：npm updateはyarn.lockも自動で書き換えるため、git restore -- yarn.lockで元に戻した
+  - npm audit：High 1件から脆弱性0件、CSSビルド成功・更新前後のapplication.cssがSHA-256とcmpで完全一致
+  - テスト：629 runs、3215 assertions、0 failures、0 errors、0 skips
+  - RuboCop：150ファイル・違反0件、Brakeman：警告0件、importmap audit：脆弱性なし、main CI（run 43720812059、lint・scan_js・scan_ruby・test）全4ジョブ成功、CIのnpm ciでfound 0 vulnerabilities
+  - 本番：Renderでc37e633がDeploy succeeded / Live、ビルドログでnpm ciのfound 0 vulnerabilitiesとDockerfileのassets:precompile実行を確認、ユーザーが本番画面5項目（トップ画面、マイページ、キャラクター画像、練習テーマ一覧、AIロープレ開始画面への導線）を確認
+  - 未確認：Renderのnpm run build:css単体のログ（デプロイ全体とassets:precompileは成功）
 ## 10. 完了報告
 - 変更したファイルと変更内容を報告する。
 - 実行したテストコマンドと結果を報告する。
