@@ -14,7 +14,7 @@ class HomeControllerTest < ActionDispatch::IntegrationTest
 
     get home_index_url
     assert_response :success
-    assert_select "a[href='#{practice_themes_path}'][data-start-practice-link]", text: "AIロープレを始める"
+    assert_select "a[href='#{practice_categories_path}'][data-start-practice-link]", text: "AIロープレを始める"
     assert_select "a[href='#{practices_path}']", text: "練習履歴を見る"
     assert_select "form[action='#{destroy_user_session_path}']"
   end

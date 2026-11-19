@@ -3,14 +3,13 @@ require "test_helper"
 class AiRoleplayProductSnapshotTokenTest < ActiveSupport::TestCase
   setup do
     @user = users(:one)
-    @practice_theme = practice_themes(:one)
     @product = products(:published_card)
   end
 
   test "生成したトークンから商材IDと開始時点のスナップショットを取得できる" do
     token = generate_token
 
-    result = AiRoleplayProductSnapshotToken.verify!(token, user: @user, practice_theme: @practice_theme)
+    result = AiRoleplayProductSnapshotToken.verify!(token, user: @user)
 
     assert_equal @product.id, result.product_id
     assert_equal "ポイントカード", result.product_snapshot.dig("product", "name")
@@ -22,7 +21,7 @@ class AiRoleplayProductSnapshotTokenTest < ActiveSupport::TestCase
     token = generate_token
     @product.update!(name: "編集後の名前", summary: "編集後の概要")
 
-    result = AiRoleplayProductSnapshotToken.verify!(token, user: @user, practice_theme: @practice_theme)
+    result = AiRoleplayProductSnapshotToken.verify!(token, user: @user)
 
     assert_equal "ポイントカード", result.product_snapshot.dig("product", "name")
     assert_equal "買い物でポイントが貯まるクレジットカード。", result.product_snapshot.dig("product", "summary")
@@ -58,7 +57,7 @@ class AiRoleplayProductSnapshotTokenTest < ActiveSupport::TestCase
     token = generate_token
 
     travel 2.hours - 1.minute do
-      assert AiRoleplayProductSnapshotToken.verify!(token, user: @user, practice_theme: @practice_theme)
+      assert AiRoleplayProductSnapshotToken.verify!(token, user: @user)
     end
 
     travel 2.hours + 1.second do
@@ -70,27 +69,45 @@ class AiRoleplayProductSnapshotTokenTest < ActiveSupport::TestCase
     token = generate_token
 
     assert_raises(AiRoleplayProductSnapshotToken::InvalidTokenError) do
-      AiRoleplayProductSnapshotToken.verify!(token, user: users(:two), practice_theme: @practice_theme)
+      AiRoleplayProductSnapshotToken.verify!(token, user: users(:two))
     end
   end
 
-  test "別の練習テーマのトークンは拒否する" do
-    token = generate_token
+  test "トークンに練習テーマを含めない" do
+    payload = decrypt(generate_token)
 
-    assert_raises(AiRoleplayProductSnapshotToken::InvalidTokenError) do
-      AiRoleplayProductSnapshotToken.verify!(token, user: @user, practice_theme: practice_themes(:two))
+    assert_equal AiRoleplayProductSnapshotToken::VERSION, payload["version"]
+    assert_not payload.key?("practice_theme_id")
+  end
+
+  test "練習テーマを含む旧形式のトークンは拒否する" do
+    legacy_payload = {
+      "user_id" => @user.id,
+      "practice_theme_id" => practice_themes(:one).id,
+      "product_id" => @product.id,
+      "product_snapshot" => @product.roleplay_snapshot
+    }
+
+    assert_invalid_token(encrypt(legacy_payload))
+    assert_invalid_token(encrypt(legacy_payload.merge("version" => AiRoleplayProductSnapshotToken::VERSION)))
+  end
+
+  test "バージョンが異なるトークンは拒否する" do
+    payload = decrypt(generate_token)
+
+    [ nil, 1, 3, "2" ].each do |version|
+      assert_invalid_token(encrypt(payload.merge("version" => version)))
     end
+  end
+
+  test "商材IDとスナップショットの商材IDが一致しないトークンは拒否する" do
+    payload = decrypt(generate_token)
+
+    assert_invalid_token(encrypt(payload.merge("product_id" => products(:fiber).id)))
   end
 
   test "別の用途で暗号化したデータはトークンとして受け付けない" do
-    key = Rails.application.key_generator.generate_key(
-      AiRoleplayProductSnapshotToken::KEY_SALT, ActiveSupport::MessageEncryptor.key_len
-    )
-    token = ActiveSupport::MessageEncryptor.new(key, serializer: :json).encrypt_and_sign(
-      { "user_id" => @user.id, "practice_theme_id" => @practice_theme.id, "product_id" => @product.id,
-        "product_snapshot" => @product.roleplay_snapshot },
-      purpose: "other_purpose"
-    )
+    token = encrypt(decrypt(generate_token), purpose: "other_purpose")
 
     assert_invalid_token(token)
   end
@@ -99,7 +116,7 @@ class AiRoleplayProductSnapshotTokenTest < ActiveSupport::TestCase
     token = generate_token
 
     error = assert_raises(AiRoleplayProductSnapshotToken::InvalidTokenError) do
-      AiRoleplayProductSnapshotToken.verify!(token, user: users(:two), practice_theme: @practice_theme)
+      AiRoleplayProductSnapshotToken.verify!(token, user: users(:two))
     end
 
     assert_equal "商材情報のトークンが不正または期限切れです", error.message
@@ -108,12 +125,27 @@ class AiRoleplayProductSnapshotTokenTest < ActiveSupport::TestCase
   private
 
   def generate_token
-    AiRoleplayProductSnapshotToken.generate(user: @user, practice_theme: @practice_theme, product: @product)
+    AiRoleplayProductSnapshotToken.generate(user: @user, product: @product)
+  end
+
+  def encryptor
+    key = Rails.application.key_generator.generate_key(
+      AiRoleplayProductSnapshotToken::KEY_SALT, ActiveSupport::MessageEncryptor.key_len
+    )
+    ActiveSupport::MessageEncryptor.new(key, serializer: :json)
+  end
+
+  def decrypt(token)
+    encryptor.decrypt_and_verify(token, purpose: AiRoleplayProductSnapshotToken::PURPOSE)
+  end
+
+  def encrypt(payload, purpose: AiRoleplayProductSnapshotToken::PURPOSE)
+    encryptor.encrypt_and_sign(payload, expires_in: AiRoleplayProductSnapshotToken::EXPIRES_IN, purpose: purpose)
   end
 
   def assert_invalid_token(token)
     assert_raises(AiRoleplayProductSnapshotToken::InvalidTokenError) do
-      AiRoleplayProductSnapshotToken.verify!(token, user: @user, practice_theme: @practice_theme)
+      AiRoleplayProductSnapshotToken.verify!(token, user: @user)
     end
   end
 end

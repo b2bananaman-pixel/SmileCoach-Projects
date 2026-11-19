@@ -13,10 +13,13 @@ Rails.application.routes.draw do
   resources :practice_themes, only: [ :index, :show ] do
     post :create_practice, on: :member
 
-    get :ai_roleplay,
-        to: "ai_roleplays#show",
-        on: :member
+    # 練習テーマを起点とした旧AIロープレ開始URLは、カテゴリ選択画面へ転送する（Issue #86）
+    get :ai_roleplay, on: :member, to: redirect("/practice_categories", status: 302)
   end
+
+  # カテゴリ選択 → 商材選択 → AIロープレ開始（Issue #86）
+  resources :practice_categories, only: [ :index, :show ]
+  get "products/:product_id/ai_roleplay", to: "ai_roleplays#show", as: :product_ai_roleplay
 
   resources :ai_roleplays, only: [ :create ] do
     get :evaluation, on: :member

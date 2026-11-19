@@ -272,6 +272,20 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "商材を起点としたAIロープレの履歴はカテゴリ名・商材名を表示する" do
+    user = sign_in_history_user
+    product = products(:published_card)
+    ai_roleplay_session = AiRoleplaySession.create!(user: user, product: product, product_snapshot: product.roleplay_snapshot)
+
+    get practices_url
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-session-id=\"#{ai_roleplay_session.id}\"]" do
+      assert_select "[data-practice-history-type]", text: "AIロープレ"
+      assert_select "h2", text: "カード／ポイントカード"
+    end
+  end
+
   test "音声分析があるAIロープレは通常録画として表示せず1件だけ表示される" do
     user = sign_in_history_user
 

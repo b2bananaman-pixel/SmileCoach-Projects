@@ -12,12 +12,6 @@ class AiRoleplaysController < ApplicationController
   # "1abc" のような値も型変換で1として検索されてしまうため、文字列の形式を先に確認する。
   PRODUCT_ID_FORMAT = /\A[1-9][0-9]{0,18}\z/
 
-  # 会話の返答生成で受け付ける練習テーマIDの形式（正の整数）
-  PRACTICE_THEME_ID_FORMAT = /\A[1-9][0-9]{0,18}\z/
-
-  # 会話の返答生成で、商材のトークンと一緒に送られた練習テーマIDがない・形式が不正な場合のエラー
-  class InvalidPracticeThemeIdError < StandardError; end
-
   # 録画の転送先（ストレージの期限付きURL）の有効期限
   VIDEO_URL_EXPIRES_IN = 30.minutes
 
@@ -25,16 +19,14 @@ class AiRoleplaysController < ApplicationController
   include ActiveStorage::SetCurrent
 
   before_action :authenticate_user!
-  before_action :set_practice_theme, only: [ :show ]
   before_action :set_roleplay_product, only: [ :show ]
 
-  # 商材を選択した場合は、開始時点の商材情報を暗号化したトークンを画面に渡し、終了時の保存で受け取る
+  # 商材を起点にAIロープレを開始する（GET /products/:product_id/ai_roleplay）
+  #
+  # 開始時点の商材情報を暗号化したトークンを画面に渡し、会話の返答生成と終了時の保存で受け取る。
   def show
-    return if @product.nil?
-
     @product_snapshot_token = AiRoleplayProductSnapshotToken.generate(
       user: current_user,
-      practice_theme: @practice_theme,
       product: @product
     )
   end
@@ -45,6 +37,7 @@ class AiRoleplaysController < ApplicationController
                                        .includes(:practice_theme, :ai_roleplay_evaluation, practice: :analysis)
                                        .find(params[:id])
     @ai_roleplay_evaluation = @ai_roleplay_session.ai_roleplay_evaluation
+    set_practice_selection_link
 
     # 話し方の分析は接客内容の評価とは別の参考評価として表示する（過去のAIロープレには存在しない）
     @voice_analysis = @ai_roleplay_session.practice&.analysis
@@ -67,15 +60,16 @@ class AiRoleplaysController < ApplicationController
          "Referrer-Policy" => "no-referrer"
   end
 
+  # 商材のトークンは必須とし、商材を選択していない新規のAIロープレは保存しない
+  #
+  # 商材を起点としたAIロープレでは練習テーマを使わないため、練習テーマは保存しない（送られても使用しない）。
   def create
     conversation_history = parsed_conversation_history
-    practice_theme = PracticeTheme.find(params.require(:practice_theme_id))
-    roleplay_product = verified_roleplay_product(practice_theme)
+    roleplay_product = verified_roleplay_product
 
     ai_roleplay_session = current_user.ai_roleplay_sessions.new(
-      practice_theme: practice_theme,
-      product: roleplay_product&.fetch(:product),
-      product_snapshot: roleplay_product&.fetch(:product_snapshot),
+      product: roleplay_product.fetch(:product),
+      product_snapshot: roleplay_product.fetch(:product_snapshot),
       duration: params[:duration],
       end_reason: params[:end_reason],
       started_at: params[:started_at],
@@ -173,7 +167,7 @@ class AiRoleplaysController < ApplicationController
     }, status: :bad_gateway
   end
 
-  # 商材を選択した場合は、AIロープレ画面で発行したトークンを検証し、開始時点の商材情報で返答を生成する
+  # AIロープレ画面で発行したトークンを検証し、開始時点の商材情報で返答を生成する（トークンは必須）
   def respond
     clerk_message = params.require(:clerk_message)
     conversation_history = parsed_conversation_history
@@ -194,22 +188,6 @@ class AiRoleplaysController < ApplicationController
     render json: {
       error: e.message
     }, status: :unprocessable_entity
-  rescue InvalidPracticeThemeIdError
-    Rails.logger.warn(
-      "[AiRoleplaysController#respond] Invalid practice theme id"
-    )
-
-    render json: {
-      error: "練習テーマの指定が不正です"
-    }, status: :unprocessable_entity
-  rescue ActiveRecord::RecordNotFound
-    Rails.logger.warn(
-      "[AiRoleplaysController#respond] Practice theme not found"
-    )
-
-    render json: {
-      error: "練習テーマが見つかりません"
-    }, status: :not_found
   rescue ActionController::ParameterMissing, ArgumentError => e
     render json: { error: e.message }, status: :unprocessable_entity
   rescue JSON::ParserError => e
@@ -254,18 +232,26 @@ class AiRoleplaysController < ApplicationController
 
   private
 
-  def set_practice_theme
-    @practice_theme = PracticeTheme.find(params[:id])
+  # 評価画面から練習を選び直す導線
+  #
+  # 練習したカテゴリが現在も有効な場合はそのカテゴリの商材選択へ、それ以外（無効・商材のない過去のセッション）はカテゴリ選択へ戻す。
+  def set_practice_selection_link
+    category_id = @ai_roleplay_session.product_snapshot&.dig("category", "id")
+
+    if category_id.is_a?(Integer) && ProductCategory.active.exists?(id: category_id)
+      @practice_selection_label = "商材選択へ戻る"
+      @practice_selection_path = practice_category_path(category_id)
+    else
+      @practice_selection_label = "カテゴリ選択へ戻る"
+      @practice_selection_path = practice_categories_path
+    end
   end
 
-  # 商材IDの指定がない・空文字の場合は商材未選択とし、従来どおりAIロープレを開始する
+  # 存在しない・非公開・無効カテゴリの商材と、不正な形式の商材IDは404とする
   #
-  # 存在しない・非公開・無効カテゴリの商材と、不正な形式の商材IDは404とする。
   # 管理者も一般ユーザーと同じ条件で、AIロープレで利用可能な商材だけを選択できる。
   def set_roleplay_product
     product_id = params[:product_id]
-
-    return if product_id.nil? || product_id == ""
 
     raise ActiveRecord::RecordNotFound unless product_id.is_a?(String) && product_id.match?(PRODUCT_ID_FORMAT)
 
@@ -277,15 +263,11 @@ class AiRoleplaysController < ApplicationController
   #
   # 開始時点で利用可能だった商材は、練習中に非公開・カテゴリ無効になっても保存できるよう、
   # 保存時は公開状態・カテゴリの状態を確認せず、トークンの正当性と商材の存在だけを確認する。
-  def verified_roleplay_product(practice_theme)
-    token = params[:product_snapshot_token]
-
-    return if token.nil? || token == ""
-
+  # トークンがない場合も、不正なトークンとして扱う（商材を選択していないAIロープレは保存しない）
+  def verified_roleplay_product
     result = AiRoleplayProductSnapshotToken.verify!(
-      token,
-      user: current_user,
-      practice_theme: practice_theme
+      params[:product_snapshot_token],
+      user: current_user
     )
 
     product = Product.find_by(id: result.product_id)
@@ -299,21 +281,11 @@ class AiRoleplaysController < ApplicationController
   # ブラウザから送られたproduct_id・product_snapshotは使用しない。
   # 開始時点の商材情報で会話を続けるため、会話のたびに商材をDBから取得しない。
   # そのため、練習中に商材が編集・非公開・カテゴリ無効になっても、開始時点の内容で返答を生成する。
+  # トークンがない場合も、不正なトークンとして扱う。
   def verified_respond_product_snapshot
-    token = params[:product_snapshot_token]
-
-    return if token.nil? || token == ""
-
-    practice_theme_id = params[:practice_theme_id]
-
-    unless practice_theme_id.is_a?(String) && practice_theme_id.match?(PRACTICE_THEME_ID_FORMAT)
-      raise InvalidPracticeThemeIdError
-    end
-
     AiRoleplayProductSnapshotToken.verify!(
-      token,
-      user: current_user,
-      practice_theme: PracticeTheme.find(practice_theme_id)
+      params[:product_snapshot_token],
+      user: current_user
     ).product_snapshot
   end
 
