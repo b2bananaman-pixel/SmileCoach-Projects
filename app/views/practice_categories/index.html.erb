@@ -1,0 +1,33 @@
+<div class="container py-5">
+  <h1 class="text-center mb-3">練習カテゴリを選択</h1>
+  <p class="text-center text-muted mb-5">練習したいカテゴリを選んで、AIロープレで接客を練習しましょう。</p>
+
+  <% if @practice_categories.empty? %>
+    <p class="text-center text-muted" data-practice-categories-empty>
+      現在、練習できるカテゴリはありません。
+    </p>
+  <% else %>
+    <div class="row g-4">
+      <% @practice_categories.each do |practice_category| %>
+        <% product_count = @product_counts.fetch(practice_category.id, 0) %>
+        <div class="col-md-6 col-lg-4">
+          <div class="card h-100 shadow-sm" data-practice-category="<%= practice_category.id %>">
+            <div class="card-body text-center d-flex flex-column">
+              <h2 class="card-title h4 mb-2">
+                <%= practice_category.name %>
+              </h2>
+
+              <p class="text-muted mb-3" data-practice-category-status>
+                <%= product_count.positive? ? "商材 #{product_count}件" : "準備中" %>
+              </p>
+
+              <%= link_to "このカテゴリを選ぶ",
+                          practice_category_path(practice_category),
+                          class: "btn btn-primary mt-auto" %>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</div>

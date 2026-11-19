@@ -28,7 +28,7 @@ class LoginPageTest < ActionDispatch::IntegrationTest
     assert_redirected_to root_path
     follow_redirect!
     assert_select "[data-mypage-welcome]", text: "#{user.name}さん、おかえりなさい！"
-    assert_select "a[data-start-practice-link][href='#{practice_themes_path}']"
+    assert_select "a[data-start-practice-link][href='#{practice_categories_path}']"
   end
 
   test "認証に失敗するとログイン画面にエラーが表示され、入力したメールアドレスが残る" do
@@ -55,11 +55,11 @@ class LoginPageTest < ActionDispatch::IntegrationTest
     assert_select "h2", text: "パスワードをお忘れですか？"
   end
 
-  test "ログイン済みユーザーは練習テーマ選択画面へ進める" do
+  test "ログイン済みユーザーは練習カテゴリ選択画面へ進める" do
     user = users(:one)
     post user_session_path, params: { user: { email: user.email, password: "password" } }
 
-    get practice_themes_path
+    get practice_categories_path
 
     assert_response :success
   end

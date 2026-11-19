@@ -23,7 +23,7 @@
         <p class="mypage-start-text mb-0">お客様との会話を実践的に練習しましょう。</p>
       </div>
       <div class="mypage-start-action">
-        <%= link_to practice_themes_path, class: "btn btn-primary mypage-start-button", data: { start_practice_link: true } do %>
+        <%= link_to practice_categories_path, class: "btn btn-primary mypage-start-button", data: { start_practice_link: true } do %>
           <span>AIロープレを始める</span>
           <i class="bi bi-chevron-right" aria-hidden="true"></i>
         <% end %>
@@ -64,7 +64,7 @@
               <%= ai_roleplay ? "AIロープレ" : "通常録画" %>
             </span>
             <p class="mypage-recent-theme mb-0" data-mypage-recent-theme>
-              <%= @recent_practice.practice_theme.name %>
+              <%= ai_roleplay ? @recent_practice.roleplay_title : @recent_practice.practice_theme&.name %>
             </p>
             <p class="mypage-recent-date mb-0">
               <time datetime="<%= @recent_practice.created_at.iso8601 %>" data-mypage-recent-date>

@@ -110,4 +110,31 @@ class PracticeTest < ActiveSupport::TestCase
       "は同じ練習テーマのAIロープレではありません"
     )
   end
+
+  test "通常録画は練習テーマが必須" do
+    practice = Practice.new(user: users(:one))
+
+    assert_not practice.valid?
+    assert practice.errors.of_kind?(:practice_theme, :blank)
+  end
+
+  test "練習テーマのないAIロープレの音声分析用Practiceは、練習テーマなしで保存できる" do
+    product = products(:published_card)
+    session = AiRoleplaySession.create!(user: users(:one), product: product, product_snapshot: product.roleplay_snapshot)
+
+    practice = Practice.create!(user: users(:one), ai_roleplay_session: session)
+
+    assert_nil practice.reload.practice_theme
+    assert_equal practice, session.reload.practice
+  end
+
+  test "練習テーマのないAIロープレに、練習テーマ付きのPracticeは関連付けられない" do
+    product = products(:published_card)
+    session = AiRoleplaySession.create!(user: users(:one), product: product, product_snapshot: product.roleplay_snapshot)
+
+    practice = Practice.new(user: users(:one), practice_theme: practice_themes(:one), ai_roleplay_session: session)
+
+    assert_not practice.valid?
+    assert_includes practice.errors[:ai_roleplay_session], "は同じ練習テーマのAIロープレではありません"
+  end
 end

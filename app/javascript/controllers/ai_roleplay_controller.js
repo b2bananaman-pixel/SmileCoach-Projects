@@ -24,8 +24,7 @@ export default class extends Controller {
     synthesizeUrl: String,
     saveUrl: String,
     evaluationUrl: String,
-    practiceThemeId: Number,
-    // 商材を選択した場合だけ設定される、開始時点の商材情報を暗号化したトークン
+    // 開始時点の商材情報を暗号化したトークン（商材を起点としたAIロープレでは必ず設定される）
     productSnapshotToken: String
   }
 
@@ -1116,16 +1115,11 @@ export default class extends Controller {
       )
     )
 
-    // 商材を選択した場合だけ、開始時点の商材情報のトークンを送り、サーバー側で検証して会話に反映する
+    // 開始時点の商材情報のトークンを送り、サーバー側で検証して会話に反映する
     if (this.productSnapshotTokenValue) {
       formData.append(
         "product_snapshot_token",
         this.productSnapshotTokenValue
-      )
-
-      formData.append(
-        "practice_theme_id",
-        this.practiceThemeIdValue
       )
     }
 
@@ -1355,11 +1349,6 @@ export default class extends Controller {
 
     const formData =
       new FormData()
-
-    formData.append(
-      "practice_theme_id",
-      this.practiceThemeIdValue
-    )
 
     formData.append(
       "video",

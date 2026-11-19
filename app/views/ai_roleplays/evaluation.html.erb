@@ -1,8 +1,13 @@
 <div class="container py-5">
   <h1 class="text-center mb-2">AIロープレ評価結果</h1>
 
-  <p class="text-center text-muted mb-5">
-    練習テーマ：<%= @ai_roleplay_session.practice_theme.name %>
+  <p class="text-center text-muted mb-5" data-ai-roleplay-evaluation-title>
+    <% if @ai_roleplay_session.roleplay_product_name %>
+      カテゴリ：<%= @ai_roleplay_session.roleplay_category_name %>
+      ／ 商材：<%= @ai_roleplay_session.roleplay_product_name %>
+    <% else %>
+      練習テーマ：<%= @ai_roleplay_session.roleplay_title %>
+    <% end %>
   </p>
 
   <div class="row justify-content-center">
@@ -109,9 +114,10 @@
               評価の作成に失敗したか、評価できる会話がありませんでした。もう一度ロープレに挑戦してみましょう。
             </p>
 
-            <%= link_to "練習テーマへ戻る",
-                        practice_theme_path(@ai_roleplay_session.practice_theme),
-                        class: "btn btn-primary" %>
+            <%= link_to @practice_selection_label,
+                        @practice_selection_path,
+                        class: "btn btn-primary",
+                        data: { practice_selection_link: true } %>
           </div>
         </div>
       <% end %>

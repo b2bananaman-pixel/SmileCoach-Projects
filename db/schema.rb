@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_11_08_110000) do
+ActiveRecord::Schema[7.2].define(version: 2026_11_19_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -79,7 +79,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_08_110000) do
 
   create_table "ai_roleplay_sessions", force: :cascade do |t|
     t.bigint "user_id", null: false
-    t.bigint "practice_theme_id", null: false
+    t.bigint "practice_theme_id"
     t.float "duration"
     t.string "end_reason"
     t.datetime "started_at"
@@ -92,6 +92,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_08_110000) do
     t.index ["product_id"], name: "index_ai_roleplay_sessions_on_product_id"
     t.index ["user_id"], name: "index_ai_roleplay_sessions_on_user_id"
     t.check_constraint "(product_id IS NULL) = (product_snapshot IS NULL)", name: "ai_roleplay_sessions_product_snapshot_presence"
+    t.check_constraint "practice_theme_id IS NOT NULL OR product_id IS NOT NULL", name: "ai_roleplay_sessions_practice_theme_or_product_present"
     t.check_constraint "product_snapshot IS NULL OR jsonb_typeof(product_snapshot) = 'object'::text", name: "ai_roleplay_sessions_product_snapshot_object"
   end
 
@@ -124,7 +125,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_08_110000) do
 
   create_table "practices", force: :cascade do |t|
     t.bigint "user_id", null: false
-    t.bigint "practice_theme_id", null: false
+    t.bigint "practice_theme_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.text "transcription"

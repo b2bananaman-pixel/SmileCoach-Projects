@@ -107,15 +107,15 @@ class MypagesControllerTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "&lt;script&gt;alert(1)&lt;/script&gt;さん、おかえりなさい！"
   end
 
-  test "AIロープレを始めるボタンは練習テーマ一覧へ、すべて見るは練習履歴へ遷移する" do
+  test "AIロープレを始めるボタンは練習カテゴリ選択へ、すべて見るは練習履歴へ遷移する" do
     sign_in @user
 
     get root_path
 
-    assert_select "a[data-start-practice-link][href='#{practice_themes_path}']", text: "AIロープレを始める"
+    assert_select "a[data-start-practice-link][href='#{practice_categories_path}']", text: "AIロープレを始める"
     assert_select "a[data-practice-history-link][href='#{practices_path}']", text: /すべて見る/
 
-    get practice_themes_path
+    get practice_categories_path
     assert_response :success
 
     get practices_path
@@ -143,6 +143,19 @@ class MypagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "[data-mypage-recent-practice='ai_roleplay'][data-record-id='#{session.id}']"
     assert_select "[data-mypage-recent-theme]", text: practice_themes(:one).name
     assert_select "[data-mypage-recent-date]", text: "2026/11/14 10:30"
+    assert_select "a[href='#{evaluation_ai_roleplay_path(session)}']", text: "評価結果を見る"
+  end
+
+  test "商材を起点としたAIロープレが最新の場合は、カテゴリ名・商材名を表示する" do
+    clear_records(@user)
+    product = products(:published_card)
+    session = AiRoleplaySession.create!(user: @user, product: product, product_snapshot: product.roleplay_snapshot)
+    sign_in @user
+
+    get root_path
+
+    assert_select "[data-mypage-recent-practice='ai_roleplay'][data-record-id='#{session.id}']"
+    assert_select "[data-mypage-recent-theme]", text: "カード／ポイントカード"
     assert_select "a[href='#{evaluation_ai_roleplay_path(session)}']", text: "評価結果を見る"
   end
 
