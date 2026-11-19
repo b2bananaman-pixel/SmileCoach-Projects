@@ -2,7 +2,7 @@
 
 SmileCoach の本番データベース（Neon Free PostgreSQL）について、バックアップの取得・検証・安全な復元テストの手順をまとめたドキュメントです。
 
-- 最終更新：2026-11-01
+- 最終更新：2026-11-19
 - 対象：SmileCoach 本番DB（Neon）
 
 > **重要**
@@ -19,7 +19,8 @@ SmileCoach の本番データベース（Neon Free PostgreSQL）について、�
 6. [復元したテーブル・レコード件数の確認方法](#6-復元したテーブルレコード件数の確認方法)
 7. [復元テスト用コンテナの安全な削除方法](#7-復元テスト用コンテナの安全な削除方法)
 8. [本番DBへの誤操作を防ぐ注意事項](#8-本番dbへの誤操作を防ぐ注意事項)
-9. [今後の課題（外部保管・定期実行）](#9-今後の課題外部保管定期実行)
+9. [Neonのスナップショットと pg_dump の使い分け](#9-neonのスナップショットと-pg_dump-の使い分け)
+10. [今後の課題（外部保管・定期実行）](#10-今後の課題外部保管定期実行)
 
 ## 1. バックアップ取得の目的と前提条件
 
@@ -33,7 +34,7 @@ SmileCoach の本番データベース（Neon Free PostgreSQL）について、�
 
 | 項目 | 内容 |
 | --- | --- |
-| 本番DB | Neon Free PostgreSQL 18.6 |
+| 本番DB | Neon Free PostgreSQL 18.7（2026-11-19のバックアップ取得時点。2026-11-01時点は 18.6） |
 | ローカル開発DB | Docker PostgreSQL 15（`docker-compose.yml` の `db` サービス） |
 | バックアップツール | PostgreSQL 18 の `pg_dump`（`postgres:18` イメージ） |
 | バックアップ形式 | custom 形式（`.dump`） |
@@ -50,7 +51,8 @@ SmileCoach の本番データベース（Neon Free PostgreSQL）について、�
 
 ### 1-4. バージョンに関する注意
 
-- `pg_dump` は**接続先サーバーと同じか新しいメジャーバージョン**を使う必要があります。本番が 18.6 のため、PostgreSQL 18 の `pg_dump` を使います。
+- `pg_dump` は**接続先サーバーと同じか新しいメジャーバージョン**を使う必要があります。本番が PostgreSQL 18 系（2026-11-19時点で 18.7）のため、PostgreSQL 18 の `pg_dump` を使います。
+- マイナーバージョンが異なる場合（例：本番 18.7、`postgres:18` イメージの `pg_dump` 18.6）も、メジャーバージョンが同じであれば取得・復元できます（2026-11-19に確認）。
 - PostgreSQL 18 で作成した custom 形式のダンプは、PostgreSQL 15 の `pg_restore` では読み込めない場合があります。
 - そのため、**ローカル開発DB（PostgreSQL 15）には復元しません**。復元テストは PostgreSQL 18 の一時コンテナで行います。
 
@@ -195,7 +197,7 @@ docker run --rm --network none \
   pg_restore --list "/backups/$DUMP_FILE" | grep -E 'TABLE DATA'
 ```
 
-`users`、`practice_themes`、`practices`、`analyses`、`ai_roleplay_sessions` などのテーブルが `TABLE DATA` として含まれていることを確認します。
+`users`、`practice_themes`、`practices`、`analyses`、`ai_roleplay_sessions`、`ai_roleplay_messages`、`ai_roleplay_evaluations`、`product_categories`、`products` などのテーブルが `TABLE DATA` として含まれていることを確認します。
 
 ### 4-4. 全体の読み取り検証
 
@@ -473,6 +475,8 @@ docker exec smilecoach-restore-test \
 - `analyses`
 - `practice_themes`
 - `practices`
+- `product_categories`
+- `products`
 - `users`
 - `schema_migrations` / `ar_internal_metadata`（Rails 管理用）
 
@@ -488,6 +492,8 @@ docker exec smilecoach-restore-test \
     UNION ALL SELECT 'ai_roleplay_sessions', COUNT(*) FROM ai_roleplay_sessions
     UNION ALL SELECT 'ai_roleplay_messages', COUNT(*) FROM ai_roleplay_messages
     UNION ALL SELECT 'ai_roleplay_evaluations', COUNT(*) FROM ai_roleplay_evaluations
+    UNION ALL SELECT 'product_categories', COUNT(*) FROM product_categories
+    UNION ALL SELECT 'products', COUNT(*) FROM products
     UNION ALL SELECT 'active_storage_blobs', COUNT(*) FROM active_storage_blobs
     UNION ALL SELECT 'active_storage_attachments', COUNT(*) FROM active_storage_attachments
     UNION ALL SELECT 'schema_migrations', COUNT(*) FROM schema_migrations;
@@ -527,6 +533,7 @@ docker exec smilecoach-restore-test \
 | 実施日 | 復元環境 | 結果 | 確認内容 |
 | --- | --- | --- | --- |
 | 2026-10-30 | `postgres:18`（PostgreSQL 18.6）一時Dockerコンテナ | 成功 | `users` 2件、`practice_themes` 4件。テスト後に一時コンテナは削除済み |
+| 2026-11-19 | `postgres:18`（PostgreSQL 18.6）一時Dockerコンテナ | 成功 | Issue #86（PR #126）のマージ前に取得したバックアップ（取得元は本番 18.7）。主要14テーブルの復元と件数を確認。`schema_migrations` の最新が `20261108110000`（マイグレーション `20261119100000` の適用前）であることを確認。SHA-256 を `.sha256` ファイルに記録。テスト後に一時コンテナは削除済み |
 
 復元テストを行ったら、この表に結果を追記してください。
 
@@ -616,40 +623,57 @@ ls -lh ~/smilecoach-backups/
 - エラーメッセージやログを共有する前に、接続URLが含まれていないか確認する
 - バックアップファイル（`.dump`）には本番の個人情報が含まれるため、リポジトリ内に置かない・コミットしない
 
-## 9. 今後の課題（外部保管・定期実行）
+## 9. Neonのスナップショットと pg_dump の使い分け
+
+マイグレーションを含むリリースの前などは、次の2つを併用します（2026-11-19の Issue #86 のリリース前に実施）。
+
+| 項目 | Neon の手動スナップショット | `pg_dump`（`backup.sh`） |
+| --- | --- | --- |
+| 作成場所 | Neon 管理画面の「Backup & restore」（`production` ブランチ） | ローカル（`~/smilecoach-backups/`） |
+| 保管場所 | Neon の中 | Neon の外 |
+| 戻し方 | Neon 上で復元（One-step／Multi-step） | 一時コンテナで内容を確認できる。本番への直接復元は通常手順の対象外（8-2） |
+| 向いている用途 | リリース直後の不具合・データ破損から、短時間で戻す | Neon 自体の障害・誤操作への備え、中身の確認、復元テスト |
+| 注意点 | Free プランでは手動スナップショットは1件まで。次に作成するときは、既存のものを残すか置き換えるかを判断する | 取得時だけ本番に読み取り接続する。接続URLの扱いは「2.」に従う |
+
+- Neon の時点を指定した復元（Instant restore）は、Free プランでは**直近6時間まで**です。リリースの直前の時刻を記録しておくと、その時点に戻せます。
+- Neon 上での復元は、**その時点より後のデータがすべて失われます**。実施する場合は、影響範囲を確認したうえで別途判断します。
+- プランの制限は変わることがあるため、実施前に Neon の公式ドキュメントと管理画面で確認してください。
+
+## 10. 今後の課題（外部保管・定期実行）
 
 現時点では、バックアップはローカル（WSL 上の `~/smilecoach-backups/`）にのみ保存しています。今後、次の項目を検討します。
 
-### 9-1. 外部保管
+### 10-1. 外部保管
 
 - PC の故障・紛失に備え、ローカル以外の保管先（クラウドストレージなど）にもコピーを置く
 - 外部に保管する前に、バックアップファイルを暗号化する（例：`gpg` や `age`）
 - 暗号化の鍵・パスフレーズはバックアップと別の場所で管理する
 - 外部保管後に `sha256sum -c` でファイルが破損していないことを確認する
 
-### 9-2. 定期実行
+### 10-2. 定期実行
 
 - `cron` や systemd タイマーによる定期実行を検討する
   - WSL は PC が起動していないと動かないため、実行漏れに注意する
 - GitHub Actions などで実行する場合は、接続URLを Secrets で管理し、ログに表示されないようにする
 - 失敗時に気づける仕組み（通知など）を用意する
 
-### 9-3. 保持期間（ローテーション）
+### 10-3. 保持期間（ローテーション）
 
 - 何世代・何日分のバックアップを残すかを決める
 - 古いバックアップの削除は手動で確認してから行う（自動削除を導入する場合は対象を限定する）
 
-### 9-4. 録音・録画ファイルのバックアップ
+### 10-4. 録音・録画ファイルのバックアップ
 
 - 本番環境の Active Storage は Google Cloud Storage（`config/storage.yml` の `google`）を使用しています
-- **DBのバックアップには `active_storage_blobs` などのメタデータしか含まれず、録音・録画ファイルの実体は含まれません**
+- **DBのバックアップ（`pg_dump`・Neon のスナップショットのどちらも）には `active_storage_blobs` などのメタデータしか含まれず、録音・録画ファイルの実体は含まれません**
+- DBを過去の時点に戻しても GCS のファイルは戻らないため、その時点より後にアップロード・削除されたファイルとDBのレコードの対応がずれる可能性があります
 - GCS 側のファイルのバックアップ方法（バージョニング、別バケットへのコピーなど）を別途検討する
 
-### 9-5. 復元テストの定期化
+### 10-5. 復元テストの定期化
 
 - 月1回など、定期的に「5〜7」の復元テストを行い、[6-5](#6-5-過去の復元テスト結果)の表に結果を記録する
 
-### 9-6. 一時データ領域の容量見直し
+### 10-6. 一時データ領域の容量見直し
 
 - 復元テスト用の tmpfs（`size=256m`）は、現在の小規模なバックアップ向けの設定です
 - データ量が増えた場合は、バックアップサイズと復元後のDBサイズを確認し、`size` を見直す（メモリ使用量が増えるため、PC のメモリ容量にも注意する）
