@@ -80,6 +80,25 @@ class AiRoleplayVoiceAnalysisServiceTest < ActiveSupport::TestCase
     assert_equal "テスト用のAIコメントです。", analysis.ai_comment
   end
 
+  test "商材を起点としたAIロープレ（練習テーマなし）でも、練習テーマなしのPracticeとAnalysisを作成する" do
+    product = products(:published_card)
+    @session.update!(practice_theme: nil, product: product, product_snapshot: product.roleplay_snapshot)
+
+    practice = nil
+
+    assert_difference([ "Practice.count", "Analysis.count" ], 1) do
+      practice = with_stubbed_ai_comment do
+        analyze(VOICE_FILE, PAUSE_FILE)
+      end
+    end
+
+    assert practice.persisted?
+    assert_nil practice.practice_theme
+    assert_equal practice, @session.reload.practice
+    assert practice.analysis.persisted?
+    assert_equal "テスト用のAIコメントです。", practice.analysis.ai_comment
+  end
+
   test "文字起こしには利用者の発言だけを会話の順番で保存しAI顧客の発言を含めない" do
     practice = with_stubbed_ai_comment do
       analyze(VOICE_FILE, PAUSE_FILE)
