@@ -147,6 +147,19 @@
   - RuboCop：150ファイル・違反0件、Brakeman：警告0件、importmap audit：脆弱性なし、main CI（run 43720812059、lint・scan_js・scan_ruby・test）全4ジョブ成功、CIのnpm ciでfound 0 vulnerabilities
   - 本番：Renderでc37e633がDeploy succeeded / Live、ビルドログでnpm ciのfound 0 vulnerabilitiesとDockerfileのassets:precompile実行を確認、ユーザーが本番画面5項目（トップ画面、マイページ、キャラクター画像、練習テーマ一覧、AIロープレ開始画面への導線）を確認
   - 未確認：Renderのnpm run build:css単体のログ（デプロイ全体とassets:precompileは成功）
+- b2bananaman-pixel/smile_coach#86 練習カテゴリ・商材選択からAIロープレを開始し、PracticeTheme依存を段階的に解消する（CLOSED 2026-11-19、受け入れ条件43項目すべて完了）
+  - PR：b2bananaman-pixel/SmileCoach-Projects#126、マージコミット a4dda7386963f1580a9c105fce4f298037516b6e
+  - 方針：B案（PracticeThemeを段階的に廃止し、Product中心のAIロープレへ移行）の第1段階。PracticeThemeテーブル・既存カラム・通常録画・ゲスト機能は削除しない
+  - 実装：カテゴリ選択（/practice_categories、ProductCategory.active.ordered、商材0件は「準備中」）、商材選択（/practice_categories/:id、Product.available_for_roleplay、0件は「現在、このカテゴリの練習は準備中です」、無効・不正なIDは404）、商材起点の開始（/products/:product_id/ai_roleplay、非公開・無効カテゴリは404）、旧/practice_themes/:id/ai_roleplayはカテゴリ選択へ302転送
+  - 商材必須化：返答生成・保存とも商材情報のトークン必須（なしは422）、トークンから練習テーマを外しversion 2を追加、旧形式トークンは拒否
+  - DB：マイグレーション20261119100000（ai_roleplay_sessions・practicesのpractice_theme_idのNULL許可、練習テーマか商材のどちらかを必須とするチェック制約）。練習テーマのない行の作成後はdownが失敗し、旧コードへ戻すと履歴・マイページ・評価画面がエラーになる
+  - AI評価：product_snapshot（提案ポイント・確認すべき事項を含む）を区切ったデータとしてシナリオに使用、評価5項目は維持、商材のない過去のセッションは練習テーマを使用
+  - 表示：AIロープレ・評価・履歴・マイページにカテゴリ名・商材名（過去のセッションは練習テーマ名）、評価画面から商材選択・カテゴリ選択へ戻る導線
+  - テスト：655 runs、3337 assertions、0 failures、0 errors、0 skips（変更前629 runs、3215 assertions）
+  - RuboCop：153ファイル・違反0件、Brakeman：警告0件、importmap audit：脆弱性なし、main CI（run 44535155626、lint・scan_js・scan_ruby・test）全4ジョブ成功
+  - リリース前：Neon productionの手動スナップショット、pg_dumpバックアップ・SHA-256検証・隔離環境への復元テスト（docs/neon_backup_restore.md）、Render設定（Docker Command・Pre-Deploy Command空欄、Auto-Deploy On Commit）を確認
+  - 本番：マージ後の新バージョンへの切り替えを確認、ユーザーが本番でカテゴリ・商材選択、AIロープレの会話、AI評価・音声分析・録画再生、マイページ・履歴の商材名、過去の履歴表示を確認
+  - 今後の課題：通常録画・ゲスト録音分析の完全廃止（#66の更新を含む）、PracticeThemeテーブル・カラムの削除と過去データの整理、商材情報を活用したAI評価基準の高度化、不要になったProduct#roleplay_labelの整理
 ## 10. 完了報告
 - 変更したファイルと変更内容を報告する。
 - 実行したテストコマンドと結果を報告する。
