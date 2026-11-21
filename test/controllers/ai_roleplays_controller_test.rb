@@ -481,7 +481,7 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
       "いらっしゃいませ。今日はお乗り換えをご検討ですか？"
     )
 
-    GuestTranscriptionService.stub(
+    AiRoleplayTranscriptionService.stub(
       :new,
       ->(audio_file) {
         assert_respond_to audio_file, :path
@@ -549,7 +549,7 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
       raise "Groq transcription test error"
     end
 
-    GuestTranscriptionService.stub(
+    AiRoleplayTranscriptionService.stub(
       :new,
       ->(_audio_file) {
         transcription_service

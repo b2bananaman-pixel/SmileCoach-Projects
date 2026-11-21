@@ -121,7 +121,7 @@ class AiRoleplayVoiceAnalysisServiceTest < ActiveSupport::TestCase
     practice = nil
 
     GroqTranscriptionService.stub(:new, ->(_audio) { transcription_service }) do
-      GuestTranscriptionService.stub(:new, ->(_audio) { transcription_service }) do
+      AiRoleplayTranscriptionService.stub(:new, ->(_audio) { transcription_service }) do
         practice = with_stubbed_ai_comment do
           analyze(VOICE_FILE, PAUSE_FILE)
         end

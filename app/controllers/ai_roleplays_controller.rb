@@ -211,7 +211,7 @@ class AiRoleplaysController < ApplicationController
   def transcribe
     audio = params.require(:audio)
 
-    transcription = GuestTranscriptionService.new(
+    transcription = AiRoleplayTranscriptionService.new(
       audio.tempfile
     ).call
 
