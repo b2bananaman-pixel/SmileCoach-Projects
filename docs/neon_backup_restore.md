@@ -2,7 +2,7 @@
 
 SmileCoach の本番データベース（Neon Free PostgreSQL）について、バックアップの取得・検証・安全な復元テストの手順をまとめたドキュメントです。
 
-- 最終更新：2026-11-19
+- 最終更新：2026-11-22
 - 対象：SmileCoach 本番DB（Neon）
 
 > **重要**
@@ -21,6 +21,7 @@ SmileCoach の本番データベース（Neon Free PostgreSQL）について、�
 8. [本番DBへの誤操作を防ぐ注意事項](#8-本番dbへの誤操作を防ぐ注意事項)
 9. [Neonのスナップショットと pg_dump の使い分け](#9-neonのスナップショットと-pg_dump-の使い分け)
 10. [今後の課題（外部保管・定期実行）](#10-今後の課題外部保管定期実行)
+11. [通常録画の過去データの整理（Issue #66）](#11-通常録画の過去データの整理issue-66)
 
 ## 1. バックアップ取得の目的と前提条件
 
@@ -664,7 +665,9 @@ ls -lh ~/smilecoach-backups/
 
 ### 10-4. 録音・録画ファイルのバックアップ
 
-- 本番環境の Active Storage は Google Cloud Storage（`config/storage.yml` の `google`）を使用しています
+- 本番環境の Active Storage は Google Cloud Storage（`config/storage.yml` の `google_us_west1`、バケット `smilecoach-video-us-west1`）を使用しています
+  - `config/environments/production.rb` の `config.active_storage.service = :google_us_west1` で指定しています（2026-11-22 に確認）
+  - バケットにはソフトデリート（保持期間7日）が設定されており、削除から7日以内のファイルは復元できます。オブジェクトのバージョニングは無効です（2026-11-21 に確認）
 - **DBのバックアップ（`pg_dump`・Neon のスナップショットのどちらも）には `active_storage_blobs` などのメタデータしか含まれず、録音・録画ファイルの実体は含まれません**
 - DBを過去の時点に戻しても GCS のファイルは戻らないため、その時点より後にアップロード・削除されたファイルとDBのレコードの対応がずれる可能性があります
 - GCS 側のファイルのバックアップ方法（バージョニング、別バケットへのコピーなど）を別途検討する
@@ -677,3 +680,76 @@ ls -lh ~/smilecoach-backups/
 
 - 復元テスト用の tmpfs（`size=256m`）は、現在の小規模なバックアップ向けの設定です
 - データ量が増えた場合は、バックアップサイズと復元後のDBサイズを確認し、`size` を見直す（メモリ使用量が増えるため、PC のメモリ容量にも注意する）
+
+## 11. 通常録画の過去データの整理（Issue #66）
+
+通常録画機能は Issue #66 で廃止しました。過去の通常録画のデータは、次の2段階で整理します。
+
+1. 録音・録画・文字起こしは、既存の14日間の自動削除（`PracticeRetentionService`、GitHub Actions の「Practice Retention Cleanup」）に任せる
+2. 自動削除が終わった通常録画の Practice・Analysis（DBの記録）だけを、`practices:cleanup_normal_recordings` で削除する
+
+> **重要**
+> - このタスクは**ファイル（GCS）を削除しません**。添付・文字起こしが残っている Practice は「保留」として削除しません
+> - 削除の対象は `ai_roleplay_session_id IS NULL AND practice_theme_id IS NOT NULL` の通常録画だけです。AIロープレのデータ（セッション・会話・評価・音声分析用の Practice・Analysis・録音・録画）、練習テーマ・商材・カテゴリ・ユーザーは削除しません
+> - **本番で実行する方法（実行環境）は未決定です。** 本番の Render は Free プランのため、Render Shell などで本番環境の rake タスクを直接実行する手段が現在ありません。削除用の内部APIは作成していません
+> - `practices:cleanup_normal_recordings`（dry-run を含む）と `storage:orphan_check` を本番で実行する前に、実行方法・日時をユーザーが決めて承認します。承認されるまで本番では実行しません
+
+### 11-1. タスクの動作
+
+| 指定 | 動作 |
+| --- | --- |
+| 指定なし | **dry-run**。削除できる件数・保留・異常値と、照合用の件数を JSON で表示する（DB・ストレージは変更しない） |
+| `CONFIRM=DELETE_NORMAL_RECORDINGS` と `EXPECTED_COUNT=<件数>` の両方 | 削除できる件数が `EXPECTED_COUNT` と一致した場合だけ、Practice・Analysis を1件ずつのトランザクションで削除する |
+| どちらか片方だけ、または値が一致しない | 何も削除せずに異常終了する |
+| `OUTPUT=<ファイルパス>` | 結果の JSON を、権限 600 の新しいファイルに保存する（既に存在する場合は、何も削除せずに異常終了する） |
+
+- 分類
+  - **削除できる**：添付（audio・video を含むすべて）も文字起こしもない
+  - **保留**：添付または文字起こしが残っている（理由を `reasons` に表示）
+  - **異常値**：`ai_roleplay_session_id`・`practice_theme_id` がどちらも NULL（削除しない）
+- 削除の直前に行をロックしてDBから読み直し、条件を再確認します。条件を満たさなくなったものは `skipped` に理由付きで表示し、削除しません
+- 削除の失敗・削除前後の照合の不一致がある場合は、終了コードが0以外になります
+
+### 11-2. 実行前の準備
+
+1. 「9.」に従い、Neon の手動スナップショットを作成し、`backup.sh` で `pg_dump` を取得して検証する（作成日時を記録する）
+2. 自動削除の実行時刻（日本時間3:00の予定。実際には遅れて実行されることがある）の前後を避ける
+3. GCS の孤立ファイルを確認する（読み取り専用。ファイルのキーは表示しない）
+
+   ```bash
+   bin/rails storage:orphan_check
+   ```
+
+   - `orphan_files`：保存先にあるが、どの blob にも対応しないファイルの件数
+   - `missing_files`・`missing_blob_ids`：blob はあるが、保存先にファイルがないもの
+   - GCS にアクセスできない場合は「保存先にアクセスできませんでした（例外のクラス名）」と表示して異常終了します
+
+### 11-3. dry-run と実行
+
+```bash
+# 1) dry-run（結果を保存する）
+bin/rails practices:cleanup_normal_recordings OUTPUT=tmp/normal_recordings_dry_run.json
+
+# 2) deletable_count・pending・anomaly_practice_ids を確認し、ユーザーの承認を得る
+
+# 3) 実行（EXPECTED_COUNT には dry-run の deletable_count を指定する）
+bin/rails practices:cleanup_normal_recordings CONFIRM=DELETE_NORMAL_RECORDINGS EXPECTED_COUNT=<deletable_count> OUTPUT=tmp/normal_recordings_execute.json
+```
+
+### 11-4. 実行前後の照合
+
+実行結果の JSON で、次を確認します。
+
+- `success` が `true`、`failed_practice_ids` と `verification_errors` が空である
+- `before.preserved` と `after.preserved` が一致している
+  - AIロープレのセッション・会話・評価・Practice・Analysis・添付、全体の添付・blob、練習テーマ・商材・カテゴリ・ユーザーの件数と、ID一覧の SHA-256 を比較しています
+- `deleted_practice_ids`・`deleted_analysis_ids` が dry-run の `deletable_practice_ids` と対応している
+- `after.normal_recordings.candidate_practices` が保留の件数と一致している
+
+照合に加えて、本番画面で AIロープレの履歴・評価・録画再生を確認します。
+
+### 11-5. 途中で失敗した場合
+
+- 削除は1件ずつのトランザクションのため、成功した分は確定し、失敗した分は変更前の状態のまま残ります
+- 原因を確認してから、改めて dry-run を実行し、その `deletable_count` を `EXPECTED_COUNT` に指定して再実行します（削除済みのものは対象に含まれません）
+- ログには Practice の ID と例外のクラス名だけを記録します
