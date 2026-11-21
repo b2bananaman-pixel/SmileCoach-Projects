@@ -12,124 +12,35 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
     sign_in @user
   end
 
-  test "練習履歴が一覧表示される" do
-    practice = Practice.create!(
-      user: @user,
-      practice_theme: @practice_theme
-    )
-
-    Analysis.create!(
-      practice: practice,
-      total_score: 85
-    )
+  test "練習履歴にAIロープレが一覧表示される" do
+    ai_roleplay_session = AiRoleplaySession.create!(user: @user, practice_theme: @practice_theme)
 
     get practices_url
 
     assert_response :success
     assert_select "h1", "練習履歴"
-    assert_select "h2", "家電の提案販売"
-    assert_select "p", /総合スコア：/
+    assert_select "[data-ai-roleplay-session-id=\"#{ai_roleplay_session.id}\"]" do
+      assert_select "h2", "家電の提案販売"
+    end
   end
 
-  test "練習日時が表示される" do
-    practice = Practice.create!(
-      user: @user,
-      practice_theme: @practice_theme,
-      created_at: Time.zone.local(2026, 8, 30, 10, 30)
-    )
+  test "通常録画の過去データは練習履歴に表示されない" do
+    user = sign_in_history_user
 
-    Analysis.create!(
-      practice: practice,
-      total_score: 85
-    )
+    normal_practice = Practice.create!(user: user, practice_theme: @practice_theme)
+    normal_analysis = Analysis.create!(practice: normal_practice, total_score: 85)
 
     get practices_url
 
     assert_response :success
-    assert_select "span", "2026/08/30 10:30"
-  end
+    assert_select "[data-practice-history-item]", count: 0
+    assert_select ".alert.alert-info", "まだ練習履歴がありません。"
+    assert_select "strong", text: "85点", count: 0
+    assert_select "a[href=?]", "/analyses/#{normal_analysis.id}", count: 0
 
-  test "総合スコアが表示される" do
-    practice = Practice.create!(
-      user: @user,
-      practice_theme: @practice_theme
-    )
-
-    Analysis.create!(
-      practice: practice,
-      total_score: 85
-    )
-
-    get practices_url
-
-    assert_response :success
-    assert_select "strong", "85点"
-  end
-
-  test "過去の分析結果詳細へのリンクが表示される" do
-    practice = Practice.create!(
-      user: @user,
-      practice_theme: @practice_theme
-    )
-
-    analysis = Analysis.create!(
-      practice: practice,
-      total_score: 85
-    )
-
-    get practices_url
-
-    assert_response :success
-    assert_select(
-      "a[href='#{analysis_path(analysis)}']",
-      "分析結果を見る"
-    )
-  end
-
-  test "他のユーザーの練習履歴は表示されない" do
-    other_user = User.create!(
-      name: "他のユーザー",
-      email: "other-user@example.com",
-      password: "password123"
-    )
-
-    own_practice = Practice.create!(
-      user: @user,
-      practice_theme: @practice_theme
-    )
-
-    Analysis.create!(
-      practice: own_practice,
-      total_score: 85
-    )
-
-    other_practice = Practice.create!(
-      user: other_user,
-      practice_theme: @practice_theme
-    )
-
-    Analysis.create!(
-      practice: other_practice,
-      total_score: 70
-    )
-
-    get practices_url
-
-    assert_response :success
-
-    assert_equal(
-      1,
-      css_select("strong").count do |element|
-        element.text.strip == "85点"
-      end
-    )
-
-    assert_equal(
-      0,
-      css_select("strong").count do |element|
-        element.text.strip == "70点"
-      end
-    )
+    # 表示しないだけで、過去データは削除しない（削除はIssue #66のPR 2で行う）
+    assert Practice.exists?(normal_practice.id)
+    assert Analysis.exists?(normal_analysis.id)
   end
 
   test "練習履歴が0件でも正常に表示される" do
@@ -168,86 +79,7 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to new_user_session_url
   end
 
-  test "自分の練習に紐づく録音データを削除できる" do
-    practice = Practice.create!(
-      user: @user,
-      practice_theme: @practice_theme
-    )
-
-    audio_file = fixture_file_upload(
-      "test/fixtures/files/test_audio.webm",
-      "audio/webm"
-    )
-    practice.audio.attach(audio_file)
-
-    assert practice.audio.attached?
-
-    delete audio_practice_path(practice)
-
-    assert_redirected_to practices_path
-
-    practice.reload
-    assert_not practice.audio.attached?
-  end
-
-  test "録音データを削除しても練習履歴と分析結果が残る" do
-    practice = Practice.create!(
-      user: @user,
-      practice_theme: @practice_theme
-    )
-
-    audio_file = fixture_file_upload(
-      "test/fixtures/files/test_audio.webm",
-      "audio/webm"
-    )
-    practice.audio.attach(audio_file)
-
-    analysis = Analysis.create!(
-      practice: practice,
-      total_score: 85
-    )
-
-    delete audio_practice_path(practice)
-
-    assert_redirected_to practices_path
-
-    practice.reload
-    assert_not practice.audio.attached?
-
-    assert Practice.exists?(practice.id)
-    assert Analysis.exists?(analysis.id)
-    assert_equal 85, analysis.reload.total_score
-  end
-
-  test "他のユーザーの録音データは削除できない" do
-    other_user = User.create!(
-      name: "他のユーザー",
-      email: "other-audio-user@example.com",
-      password: "password123"
-    )
-
-    other_practice = Practice.create!(
-      user: other_user,
-      practice_theme: @practice_theme
-    )
-
-    audio_file = fixture_file_upload(
-      "test/fixtures/files/test_audio.webm",
-      "audio/webm"
-    )
-    other_practice.audio.attach(audio_file)
-
-    assert other_practice.audio.attached?
-
-    delete audio_practice_path(other_practice)
-
-    assert_response :not_found
-
-    other_practice.reload
-    assert other_practice.audio.attached?
-  end
-
-  test "通常録画とAIロープレの履歴が種別付きで表示される" do
+  test "通常録画の過去データが残っていてもAIロープレだけが種別付きで表示される" do
     user = sign_in_history_user
 
     practice = Practice.create!(user: user, practice_theme: @practice_theme)
@@ -258,13 +90,9 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
     get practices_url
 
     assert_response :success
-    assert_select "[data-practice-history-item]", count: 2
-
-    assert_select '[data-practice-history-item="practice"]' do
-      assert_select "[data-practice-history-type]", text: "通常録画"
-      assert_select "h2", text: "家電の提案販売"
-      assert_select "strong", text: "85点"
-    end
+    assert_select "[data-practice-history-item]", count: 1
+    assert_select '[data-practice-history-item="practice"]', count: 0
+    assert_select "[data-practice-history-type]", text: "通常録画", count: 0
 
     assert_select "[data-ai-roleplay-session-id=\"#{ai_roleplay_session.id}\"]" do
       assert_select "[data-practice-history-type]", text: "AIロープレ"
@@ -303,7 +131,7 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
 
     # 音声分析用のPracticeの総合スコアや通常録画の分析結果画面へのリンクを表示しない
     assert_select "strong", text: "77点", count: 0
-    assert_select "a[href=?]", analysis_path(voice_analysis), count: 0
+    assert_select "a[href=?]", "/analyses/#{voice_analysis.id}", count: 0
   end
 
   test "音声分析がないAIロープレも表示され評価の状態が分かる" do
@@ -354,21 +182,6 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "通常録画は従来どおり分析結果画面へリンクする" do
-    user = sign_in_history_user
-
-    practice = Practice.create!(user: user, practice_theme: @practice_theme)
-    analysis = Analysis.create!(practice: practice, total_score: 85)
-
-    get practices_url
-
-    assert_response :success
-    assert_select '[data-practice-history-item="practice"]' do
-      assert_select "a[href=?]", analysis_path(analysis), text: "分析結果を見る"
-      assert_select "a", text: "評価結果を見る", count: 0
-    end
-  end
-
   test "AIロープレは統合評価画面へリンクする" do
     user = sign_in_history_user
 
@@ -389,35 +202,35 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "通常録画とAIロープレが実施日時の新しい順に表示される" do
+  test "AIロープレが実施日時の新しい順に表示され、通常録画は間に並ばない" do
     user = sign_in_history_user
 
-    oldest_practice = Practice.create!(
+    oldest_session = AiRoleplaySession.create!(
       user: user,
       practice_theme: @practice_theme,
       created_at: Time.zone.local(2026, 10, 20, 9, 0)
     )
-    older_session = AiRoleplaySession.create!(
+    Practice.create!(
       user: user,
       practice_theme: @practice_theme,
       created_at: Time.zone.local(2026, 10, 21, 9, 0)
     )
-    newer_practice = Practice.create!(
+    newer_session = AiRoleplaySession.create!(
       user: user,
       practice_theme: @practice_theme,
       created_at: Time.zone.local(2026, 10, 22, 9, 0)
     )
-    newest_session = AiRoleplaySession.create!(
+    Practice.create!(
       user: user,
       practice_theme: @practice_theme,
       created_at: Time.zone.local(2026, 10, 23, 9, 0)
     )
 
-    # 音声分析用のPracticeは作成日時が新しくても、通常録画として並ばない
+    # 音声分析用のPracticeは作成日時が新しくても、別の履歴として並ばない
     Practice.create!(
       user: user,
       practice_theme: @practice_theme,
-      ai_roleplay_session: older_session,
+      ai_roleplay_session: oldest_session,
       created_at: Time.zone.local(2026, 10, 24, 9, 0)
     )
 
@@ -425,18 +238,26 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
 
-    displayed_times = css_select("[data-practice-history-item] span:not([data-practice-history-type])").map do |element|
-      element.text.strip
-    end
-
     assert_equal(
-      [ newest_session, newer_practice, older_session, oldest_practice ].map { |item| item.created_at.strftime("%Y/%m/%d %H:%M") },
-      displayed_times
+      [ newer_session.id, oldest_session.id ].map(&:to_s),
+      css_select("[data-practice-history-item]").map { |element| element["data-ai-roleplay-session-id"] }
     )
+  end
 
+  test "実施日時が同じAIロープレはIDの大きい順に表示される" do
+    user = sign_in_history_user
+    created_at = Time.zone.local(2026, 10, 20, 9, 0)
+
+    older = AiRoleplaySession.create!(user: user, practice_theme: @practice_theme, created_at: created_at)
+    newer = AiRoleplaySession.create!(user: user, practice_theme: @practice_theme, created_at: created_at)
+    assert_operator newer.id, :>, older.id
+
+    get practices_url
+
+    assert_response :success
     assert_equal(
-      %w[ai_roleplay practice ai_roleplay practice],
-      css_select("[data-practice-history-item]").map { |element| element["data-practice-history-item"] }
+      [ newer.id, older.id ].map(&:to_s),
+      css_select("[data-practice-history-item]").map { |element| element["data-ai-roleplay-session-id"] }
     )
   end
 
@@ -535,7 +356,8 @@ class PracticesControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :success
-    assert_select "[data-practice-history-item]", count: item_count * 2
+    # 通常録画の過去データは表示しないため、AIロープレの件数だけ表示される
+    assert_select "[data-practice-history-item]", count: item_count
 
     queries.size
   end

@@ -44,7 +44,7 @@ class AdminAuthorizationTest < ActionDispatch::IntegrationTest
   test "管理画面リンクは管理者の他の画面のナビゲーションにも表示する" do
     sign_in users(:admin)
 
-    get practice_themes_path
+    get practice_categories_path
 
     assert_response :success
     assert_select "nav a[href=?]", admin_root_path, text: "管理画面"

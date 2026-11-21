@@ -1,18 +1,15 @@
 Rails.application.routes.draw do
-  resources :practices, only: [ :index ] do
-    delete :audio, on: :member
-  end
+  # 練習履歴（AIロープレのみを表示する）
+  resources :practices, only: [ :index ]
 
   post "internal/practice_retention", to: "internal/practice_retention#destroy"
   get "internal/practice_retention/dry_run", to: "internal/practice_retention#dry_run"
 
-  resources :analyses, only: [ :show ] do
-    patch :smile_score, on: :member
-  end
+  # 通常録画は廃止した（Issue #66）。旧URLはカテゴリ選択画面へ転送する
+  get "practice_themes", to: redirect("/practice_categories", status: 302)
+  get "practice_themes/:id", to: redirect("/practice_categories", status: 302)
 
-  resources :practice_themes, only: [ :index, :show ] do
-    post :create_practice, on: :member
-
+  resources :practice_themes, only: [] do
     # 練習テーマを起点とした旧AIロープレ開始URLは、カテゴリ選択画面へ転送する（Issue #86）
     get :ai_roleplay, on: :member, to: redirect("/practice_categories", status: 302)
   end

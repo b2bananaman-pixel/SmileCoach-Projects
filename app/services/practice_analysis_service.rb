@@ -1,8 +1,8 @@
 # 保存済みのPracticeの音声・文字起こし・録音時間から話し方を分析し、Analysisを作成する
 #
 # 文字起こしはpractice.transcriptionを使用する。
-# 通常録画ではGroqで文字起こしした結果を、AIロープレでは会話中に取得した利用者の発言を
-# 事前にPracticeへ保存してから呼び出す。
+# AIロープレの音声分析（AiRoleplayVoiceAnalysisService）から、会話中に取得した利用者の発言を
+# 事前にPracticeへ保存してから呼び出す（通常録画はIssue #66で廃止した）。
 class PracticeAnalysisService
   include AnalysisPerformanceMeasurement
 

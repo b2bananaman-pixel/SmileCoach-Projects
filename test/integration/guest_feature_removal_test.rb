@@ -56,11 +56,9 @@ class GuestFeatureRemovalTest < ActionDispatch::IntegrationTest
     assert_no_difference([ "Practice.count", "Analysis.count", "ActiveStorage::Blob.count" ]) do
       Net::HTTP.stub(:start, fail_if_called) do
         AiRoleplayTranscriptionService.stub(:new, fail_if_called) do
-          GroqTranscriptionService.stub(:new, fail_if_called) do
-            AiCommentService.stub(:new, fail_if_called) do
-              post "/guest/practice_themes/#{@practice_theme.id}/create_practice",
-                   params: { audio: audio, duration: 3.0 }
-            end
+          AiCommentService.stub(:new, fail_if_called) do
+            post "/guest/practice_themes/#{@practice_theme.id}/create_practice",
+                 params: { audio: audio, duration: 3.0 }
           end
         end
       end
