@@ -1,28 +1,14 @@
 class PracticesController < ApplicationController
   before_action :authenticate_user!
 
+  # 練習履歴にはAIロープレだけを表示する（通常録画はIssue #66で廃止した）
+  #
+  # 通常録画の過去データ（ai_roleplay_session_idのないPractice）がDBに残っていても表示しない。
+  # AIロープレの音声分析用Practiceは、AIロープレの履歴として1セッションにつき1件で表示する。
   def index
-    # AIロープレの音声分析用Practiceは、AIロープレの履歴として表示するため通常録画から除く
-    practices = current_user.practices
-                            .where(ai_roleplay_session_id: nil)
-                            .with_attached_audio
-                            .includes(:analysis, :practice_theme)
-
-    # 音声分析の有無に関係なく、AIロープレは1セッションにつき1件として表示する
-    ai_roleplay_sessions = current_user.ai_roleplay_sessions
-                                       .includes(:practice_theme, :ai_roleplay_evaluation, practice: :analysis)
-
-    # 通常録画とAIロープレを1つの履歴として新しい順に並べる（同時刻の場合はIDの大きい順）
-    @history_items = (practices.to_a + ai_roleplay_sessions.to_a)
-                     .sort_by { |item| [ item.created_at, item.id ] }
-                     .reverse
-  end
-
-  def audio
-    practice = current_user.practices.find(params[:id])
-
-    practice.audio.purge
-
-    redirect_to practices_path
+    @history_items = current_user.ai_roleplay_sessions
+                                 .includes(:practice_theme, :ai_roleplay_evaluation, practice: :analysis)
+                                 .order(created_at: :desc, id: :desc)
+                                 .to_a
   end
 end

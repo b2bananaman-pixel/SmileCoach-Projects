@@ -159,19 +159,22 @@ class MypagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "a[href='#{evaluation_ai_roleplay_path(session)}']", text: "評価結果を見る"
   end
 
-  test "通常録画が最新の場合は通常録画を表示し、分析結果があれば分析結果へのリンクを表示する" do
+  test "通常録画の過去データが新しくても表示せず、AIロープレを表示する" do
     clear_records(@user)
-    create_ai_roleplay_session(@user, created_at: Time.utc(2026, 11, 13, 1, 30))
+    session = create_ai_roleplay_session(@user, created_at: Time.utc(2026, 11, 13, 1, 30))
     practice = create_practice(@user, created_at: Time.utc(2026, 11, 14, 2, 0), practice_theme: practice_themes(:two))
     analysis = Analysis.create!(practice: practice, total_score: 80)
     sign_in @user
 
     get root_path
 
-    assert_select "[data-mypage-recent-practice='practice'][data-record-id='#{practice.id}']"
-    assert_select "[data-mypage-recent-theme]", text: practice_themes(:two).name
-    assert_select "[data-mypage-recent-date]", text: "2026/11/14 11:00"
-    assert_select "a[href='#{analysis_path(analysis)}']", text: "分析結果を見る"
+    assert_select "[data-mypage-recent-practice]", count: 1
+    assert_select "[data-mypage-recent-practice='ai_roleplay'][data-record-id='#{session.id}']"
+    assert_select "[data-mypage-recent-practice='practice']", count: 0
+    assert_select "[data-mypage-recent-theme]", text: practice_themes(:one).name
+    assert_select "[data-mypage-recent-date]", text: "2026/11/13 10:30"
+    assert_select "a[href='/analyses/#{analysis.id}']", count: 0
+    assert_select "a", text: "分析結果を見る", count: 0
   end
 
   test "AIロープレの評価がなくてもエラーにならない" do
@@ -186,16 +189,20 @@ class MypagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "a[href='#{evaluation_ai_roleplay_path(session)}']"
   end
 
-  test "通常録画の分析結果がない場合は詳細へのリンクを表示しない" do
+  test "通常録画の過去データしかない場合は案内文を表示する" do
     clear_records(@user)
     practice = create_practice(@user, created_at: Time.current)
+    Analysis.create!(practice: practice, total_score: 80)
     sign_in @user
 
     get root_path
 
     assert_response :success
-    assert_select "[data-mypage-recent-practice='practice'][data-record-id='#{practice.id}']"
-    assert_select "[data-mypage-recent-practice] a", count: 0
+    assert_select "[data-mypage-recent-empty]", text: "まだ練習履歴がありません。最初のAIロープレに挑戦しましょう！"
+    assert_select "[data-mypage-recent-practice]", count: 0
+
+    # 表示しないだけで、過去データは削除しない（削除はIssue #66のPR 2で行う）
+    assert Practice.exists?(practice.id)
   end
 
   test "AIロープレの音声分析用Practiceは通常録画として扱わない" do
@@ -212,14 +219,14 @@ class MypagesControllerTest < ActionDispatch::IntegrationTest
   test "作成日時が同じ場合はIDの大きい記録を表示する" do
     clear_records(@user)
     created_at = Time.utc(2026, 11, 14, 1, 0)
-    older = create_practice(@user, created_at: created_at)
-    newer = create_practice(@user, created_at: created_at)
+    older = create_ai_roleplay_session(@user, created_at: created_at)
+    newer = create_ai_roleplay_session(@user, created_at: created_at)
     assert_operator newer.id, :>, older.id
     sign_in @user
 
     get root_path
 
-    assert_select "[data-mypage-recent-practice='practice'][data-record-id='#{newer.id}']"
+    assert_select "[data-mypage-recent-practice='ai_roleplay'][data-record-id='#{newer.id}']"
   end
 
   test "他のユーザーの練習記録は表示しない" do

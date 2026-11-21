@@ -55,16 +55,13 @@
           まだ練習履歴がありません。最初のAIロープレに挑戦しましょう！
         </p>
       <% else %>
-        <% ai_roleplay = @recent_practice.is_a?(AiRoleplaySession) %>
         <div class="mypage-recent-item"
-             data-mypage-recent-practice="<%= ai_roleplay ? "ai_roleplay" : "practice" %>"
+             data-mypage-recent-practice="ai_roleplay"
              data-record-id="<%= @recent_practice.id %>">
           <div class="mypage-recent-info">
-            <span class="badge <%= ai_roleplay ? "bg-success" : "bg-secondary" %> mb-1">
-              <%= ai_roleplay ? "AIロープレ" : "通常録画" %>
-            </span>
+            <span class="badge bg-success mb-1">AIロープレ</span>
             <p class="mypage-recent-theme mb-0" data-mypage-recent-theme>
-              <%= ai_roleplay ? @recent_practice.roleplay_title : @recent_practice.practice_theme&.name %>
+              <%= @recent_practice.roleplay_title %>
             </p>
             <p class="mypage-recent-date mb-0">
               <time datetime="<%= @recent_practice.created_at.iso8601 %>" data-mypage-recent-date>
@@ -73,15 +70,9 @@
             </p>
           </div>
 
-          <% if ai_roleplay %>
-            <%= link_to "評価結果を見る",
-                        evaluation_ai_roleplay_path(@recent_practice),
-                        class: "btn mypage-recent-button" %>
-          <% elsif @recent_practice.analysis.present? %>
-            <%= link_to "分析結果を見る",
-                        analysis_path(@recent_practice.analysis),
-                        class: "btn mypage-recent-button" %>
-          <% end %>
+          <%= link_to "評価結果を見る",
+                      evaluation_ai_roleplay_path(@recent_practice),
+                      class: "btn mypage-recent-button" %>
         </div>
       <% end %>
     </section>

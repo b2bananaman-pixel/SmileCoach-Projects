@@ -70,7 +70,8 @@ class PracticeAnalysisServiceTest < ActiveSupport::TestCase
 
     analysis = nil
 
-    GroqTranscriptionService.stub(
+    # 通常録画のGroqTranscriptionServiceはIssue #66で削除したため、AIロープレの文字起こしServiceで確認する
+    AiRoleplayTranscriptionService.stub(
       :new,
       ->(_audio) { transcription_service }
     ) do
