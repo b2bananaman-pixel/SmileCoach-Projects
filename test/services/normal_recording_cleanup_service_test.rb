@@ -107,6 +107,13 @@ class NormalRecordingCleanupServiceTest < ActiveSupport::TestCase
     assert_equal 1, result.after[:normal_recordings][:anomaly_practices]
   end
 
+  test "添付が残るPracticeを削除するとファイルの削除ジョブが登録される（削除ジョブの検知が有効であることの確認）" do
+    # 対照実験：このServiceを使わずに添付付きのPracticeを削除すると、Active Storageの削除ジョブが登録される
+    assert_enqueued_with(job: ActiveStorage::PurgeJob) do
+      @pending_audio.destroy!
+    end
+  end
+
   test "CONFIRMが一致しない場合は何も削除しない" do
     [ nil, "", "delete_normal_recordings", "YES" ].each do |confirm|
       assert_counts_unchanged do

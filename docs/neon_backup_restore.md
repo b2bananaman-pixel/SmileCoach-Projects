@@ -691,7 +691,8 @@ ls -lh ~/smilecoach-backups/
 > **重要**
 > - このタスクは**ファイル（GCS）を削除しません**。添付・文字起こしが残っている Practice は「保留」として削除しません
 > - 削除の対象は `ai_roleplay_session_id IS NULL AND practice_theme_id IS NOT NULL` の通常録画だけです。AIロープレのデータ（セッション・会話・評価・音声分析用の Practice・Analysis・録音・録画）、練習テーマ・商材・カテゴリ・ユーザーは削除しません
-> - 本番で実行する方法（実行環境）は未決定です。実行前に、実行方法・日時をユーザーが決めて承認します
+> - **本番で実行する方法（実行環境）は未決定です。** 本番の Render は Free プランのため、Render Shell などで本番環境の rake タスクを直接実行する手段が現在ありません。削除用の内部APIは作成していません
+> - `practices:cleanup_normal_recordings`（dry-run を含む）と `storage:orphan_check` を本番で実行する前に、実行方法・日時をユーザーが決めて承認します。承認されるまで本番では実行しません
 
 ### 11-1. タスクの動作
 
