@@ -30,11 +30,6 @@ Rails.application.routes.draw do
   post "ai_roleplays/respond", to: "ai_roleplays#respond"
   post "ai_roleplays/transcribe", to: "ai_roleplays#transcribe"
 
-  get "guest/practice_themes", to: "guest_practice_themes#index"
-  get "guest/practice_themes/:id", to: "guest_practice_themes#show", as: :guest_practice_theme
-  post "guest/practice_themes/:id/create_practice",
-     to: "guest_practice_themes#create_practice",
-     as: :create_guest_practice
   # 最後の最高管理者がアカウントを削除できないよう、アカウント削除の処理だけを差し替える
   devise_for :users, controllers: { registrations: "users/registrations" }
 

@@ -3,9 +3,14 @@ require "uri"
 require "json"
 require "securerandom"
 
-class GuestTranscriptionService
+# AIロープレ中に録音した利用者（店員役）の発話音声を、Groqで文字起こしする
+#
+# AiRoleplaysController#transcribe から、アップロードされた音声の一時ファイルを受け取って呼び出す。
+# 文字起こし結果のテキストを返し、Groq APIの呼び出しに失敗した場合は例外を送出する。
+class AiRoleplayTranscriptionService
   API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
   MODEL = "whisper-large-v3-turbo"
+  AUDIO_FILENAME = "ai_roleplay_clerk_audio.webm".freeze
 
   def initialize(audio_file, http_client: Net::HTTP)
     @audio_file = audio_file
@@ -30,7 +35,7 @@ class GuestTranscriptionService
     body << "Content-Disposition: form-data; name=\"language\"\r\n\r\n"
     body << "ja\r\n"
     body << "--#{boundary}\r\n"
-    body << "Content-Disposition: form-data; name=\"file\"; filename=\"guest_practice_audio.webm\"\r\n"
+    body << "Content-Disposition: form-data; name=\"file\"; filename=\"#{AUDIO_FILENAME}\"\r\n"
     body << "Content-Type: audio/webm\r\n\r\n"
     body << file_data
     body << "\r\n--#{boundary}--\r\n"
