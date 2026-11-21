@@ -160,6 +160,29 @@
   - リリース前：Neon productionの手動スナップショット、pg_dumpバックアップ・SHA-256検証・隔離環境への復元テスト（docs/neon_backup_restore.md）、Render設定（Docker Command・Pre-Deploy Command空欄、Auto-Deploy On Commit）を確認
   - 本番：マージ後の新バージョンへの切り替えを確認、ユーザーが本番でカテゴリ・商材選択、AIロープレの会話、AI評価・音声分析・録画再生、マイページ・履歴の商材名、過去の履歴表示を確認
   - 今後の課題：通常録画・ゲスト録音分析の完全廃止（#66の更新を含む）、PracticeThemeテーブル・カラムの削除と過去データの整理、商材情報を活用したAI評価基準の高度化、不要になったProduct#roleplay_labelの整理
+- b2bananaman-pixel/smile_coach#87 ゲスト録音分析機能を廃止し、AIロープレの音声認識を維持する（CLOSED 2026-11-21、受け入れ条件15項目すべて完了）
+  - PR：b2bananaman-pixel/SmileCoach-Projects#129、マージコミット c344cbdb0d3ff2d38c2410861495c7b800f6e402
+  - 方針：#66の調査で決めたA案（先にゲスト機能を廃止し、そのあと#66で通常録画の新規作成を停止。バーチャル背景・笑顔分析の統合は後回し、過去データは保護）
+  - 実装：ログイン不要でGroq APIを呼び出せたゲスト録音分析機能を廃止。ゲスト用のルート3件（/guest/practice_themes、/:id、/:id/create_practice）、GuestPracticeThemesController、View 2件、ゲスト専用Service 4件（GuestAudioAnalysisService・GuestAnalysisResult・GuestVolumeAnalysis・GuestSpeechDurationAnalysis）とそのテストを削除
+  - 維持：AIロープレの音声認識（POST /ai_roleplays/transcribe）でも使っていたGuestTranscriptionServiceを、AiRoleplayTranscriptionServiceに名前を変えて維持（処理は同じ。送信ファイル名だけai_roleplay_clerk_audio.webmに変更）
+  - テスト追加：AiRoleplayTranscriptionServiceTest（リクエスト内容・失敗時の例外）、GuestFeatureRemovalTest（ルート・ヘルパー・クラスがないこと、ログインの有無によらず404、Groq・AIコメントを呼ばずデータも増えないこと）
+  - 既存動作：Practice・Analysis・PracticeTheme・Active Storage、#66の範囲（practice_themes・CreatePracticeService・GroqTranscriptionService・VideoAudioExtractor・JS）、共通Serviceは変更なし。DBマイグレーションなし
+  - テスト：662 runs、3368 assertions、0 failures、0 errors、0 skips（Ruby 3.4.13）
+  - RuboCop：149ファイル・違反0件、Brakeman：警告0件（EOLRuby・EOLRailsは除外）、importmap audit：脆弱性なし、PR CI（run 44913210836）・main CI（run 44913637352、lint・scan_js・scan_ruby・test）全4ジョブ成功
+  - 本番：8項目を確認（Renderでc344cbdがLive、ログイン、マイページ、AIロープレ開始、会話・音声認識、録画保存、AI評価・音声分析、過去の履歴・録画再生）。外部からのGETで/guest/practice_themes・/guest/practice_themes/1が404であることも確認
+  - 注記：本番へのPOSTは実行していない（POSTが404になりGroqを呼ばないことは自動テストで確認）。#88のマージ後、Gemfile.lockの未コミット変更（mainと同じ内容）だけをrestoreし、--ff-onlyでmainへ追従した
+  - 今後の課題：#66（通常録画の新規作成の停止）、笑顔分析のAIロープレへの統合（Issue未作成）
+- b2bananaman-pixel/smile_coach#88 Ruby 3.2.2をセキュリティ修正版へ更新し、CVE-2026-132825に対応する（CLOSED 2026-11-21、受け入れ条件16項目すべて完了）
+  - PR：b2bananaman-pixel/SmileCoach-Projects#128、マージコミット 55bdbc7a691b1fc7f423e50732e59ee8d501665e
+  - 原因：#87の作業中にBrakemanを8.1.1へ更新したところ、新しいRuby2Shellチェックが警告を出した（Ruby 3.2.2、CVE-2026-132825）。Ruby公式では、2026-11-18公表の正規表現・文字列の大文字小文字変換に関する脆弱性7件（GHSA ID）。Ruby 3.2はEOLのため修正版がない
+  - 選定：3.3.14（EOL 2027-03-31予定）と3.4.13（normal maintenance）を比較。Gem 135件の必要Rubyバージョン・Rails 7.2・Docker Hub・setup-rubyのいずれも問題ないため、サポート期間の長い3.4.13を採用
+  - 実装：.ruby-versionを3.2.2→3.4.13、DockerfileのARG RUBY_VERSIONを3.2.3→3.4.13に変更。ベースイメージを-slim-bookwormに変えてDebian bookwormを維持（-slimはtrixie）。Gemfile.lockのbrakemanを8.1.0→8.1.1に更新（bin/brakemanの--ensure-latestを維持するため）。CI・Render設定・アプリコード・DBは変更なし
+  - 作業方法：#87の未コミット変更を守るため、git worktree（~/Projects/smile_coach_app-issue-88）で作業した。Docker Composeのプロジェクト・DBボリュームは別になる
+  - テスト：655 runs、3337 assertions、0 failures、0 errors、0 skips（-W:deprecatedでもRubyの警告0件）
+  - RuboCop：153ファイル・違反0件、Brakeman：警告0件（EOLRuby・EOLRailsは除外）、importmap audit：脆弱性なし、PR CI（run 44907288429）・main CI（run 44909432961、lint・scan_js・scan_ruby・test）全4ジョブ成功（Ruby 3.4.13）
+  - 本番：Renderデプロイ成功。ユーザーが本番で7項目（ログイン、マイページ表示、AIロープレ開始、会話・音声認識、録画・保存、AI評価結果表示、過去の練習履歴・録画表示）を確認
+  - 注記：worktreeにはビルド済みCSSがないため、初回のテストで134件のエラー（application.cssがない）が出た。イメージ内でビルドしたCSSを、管理対象外のapp/assets/builds/へコピーして解消した
+  - 今後の課題：Rails 7.2のサポート終了（Brakeman EOLRails、2026-08-09）への対応（Rails 8系への更新）を別Issueで行う
 ## 10. 完了報告
 - 変更したファイルと変更内容を報告する。
 - 実行したテストコマンドと結果を報告する。
