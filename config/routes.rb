@@ -21,6 +21,8 @@ Rails.application.routes.draw do
   resources :ai_roleplays, only: [ :create ] do
     get :evaluation, on: :member
     get :video, on: :member
+    # 録画だけを削除する（評価・会話などの学習記録は残す。Issue #89）
+    delete :video, on: :member, action: :destroy_video
   end
 
   post "ai_roleplays/synthesize", to: "ai_roleplays#synthesize"
