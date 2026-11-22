@@ -58,14 +58,31 @@ class Admin::InvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, token
   end
 
-  test "招待リンクを表示する画面は、キャッシュに保存させずRefererも送らない" do
+  test "招待リンクを表示する画面は、キャッシュに保存させず、他のサイトへRefererを送らない" do
     sign_in @admin
 
     post admin_invitations_path, params: { invitation: { email: "new-member@example.com" } }
 
     assert_response :created
     assert_includes response.headers["Cache-Control"], "no-store"
-    assert_equal "no-referrer", response.headers["Referrer-Policy"]
+    assert_equal "same-origin", response.headers["Referrer-Policy"]
+  end
+
+  # no-referrerはTurboで移動した後も文書に残り、通常のフォーム送信でOriginが"null"になるため使わない（本番で422になった不具合の回帰テスト）
+  test "招待の発行・一覧・発行画面はいずれもReferrer-Policyをno-referrerにしない" do
+    sign_in @admin
+
+    post admin_invitations_path, params: { invitation: { email: "new-member@example.com" } }
+    assert_not_equal "no-referrer", response.headers["Referrer-Policy"]
+
+    post admin_invitations_path, params: { invitation: { email: "new-member@example.com" } }
+    assert_response :unprocessable_entity
+    assert_not_equal "no-referrer", response.headers["Referrer-Policy"]
+
+    [ admin_invitations_path, new_admin_invitation_path ].each do |path|
+      get path
+      assert_not_equal "no-referrer", response.headers["Referrer-Policy"], "#{path}はno-referrerにしないこと"
+    end
   end
 
   test "招待リンクのトークンと招待するメールアドレスをログに出さない" do
@@ -289,6 +306,45 @@ class Admin::InvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
   end
 
+  test "CSRF保護とOrigin検証を有効にした状態で、発行に続けて同じメールアドレスを送信すると、重複のエラーを表示する" do
+    sign_in @admin
+
+    with_forgery_protection do
+      assert ActionController::Base.forgery_protection_origin_check
+
+      assert_difference("Invitation.count", 1) do
+        post admin_invitations_path, params: { authenticity_token: invitation_form_token, invitation: { email: "new-member@example.com" } },
+                                     headers: { "Origin" => same_origin }
+      end
+      assert_response :created
+
+      # 本番で422になった操作（発行の後に、もう一度同じメールアドレスで発行する）
+      assert_no_difference("Invitation.count") do
+        post admin_invitations_path, params: { authenticity_token: invitation_form_token, invitation: { email: "new-member@example.com" } },
+                                     headers: { "Origin" => same_origin }
+      end
+    end
+
+    assert_response :unprocessable_entity
+    assert_select "[data-admin-invitation-form] [data-admin-form-errors] li", text: /有効な招待がすでにあります/
+  end
+
+  test "CSRF保護を有効にした状態で、Originがnullまたは他のサイトの送信は、正しいCSRFトークンでも拒否する" do
+    sign_in @admin
+
+    with_forgery_protection do
+      [ "null", "https://attacker.example" ].each do |origin|
+        assert_no_difference("Invitation.count") do
+          post admin_invitations_path, params: { authenticity_token: invitation_form_token, invitation: { email: "new-member@example.com" } },
+                                       headers: { "Origin" => origin }
+        end
+
+        assert_response :unprocessable_entity
+        assert_select "[data-admin-invitation-form]", count: 0
+      end
+    end
+  end
+
   test "招待の発行は既存の自由登録を停止しない（PR 1の段階）" do
     get new_user_registration_path
 
@@ -297,6 +353,17 @@ class Admin::InvitationsControllerTest < ActionDispatch::IntegrationTest
   end
 
   private
+
+  # 発行画面を開き、フォームのCSRFトークンを取得する
+  def invitation_form_token
+    get new_admin_invitation_path
+    css_select("[data-admin-invitation-form] form input[name=authenticity_token]").first["value"]
+  end
+
+  # 統合テストのリクエスト先と同じOrigin
+  def same_origin
+    "http://www.example.com"
+  end
 
   # テスト環境では無効にしているCSRF対策を、ブロックの中だけ有効にする
   def with_forgery_protection

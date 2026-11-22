@@ -23,9 +23,13 @@ class Admin::InvitationsController < Admin::BaseController
       return
     end
 
-    # 招待リンクを含む画面は、ブラウザ・中間のキャッシュに保存させず、リンク先へRefererも送らない
+    # 招待リンクを含む画面は、ブラウザ・中間のキャッシュに保存させず、他のサイトへRefererを送らない
+    #
+    # no-referrerにすると、Turboで画面を移動した後も同じ文書にこの設定が残り、
+    # 通常のフォーム送信でOriginが"null"になってCSRFのOrigin検証で拒否される（422）ため、same-originとする。
+    # この画面のURL（POST /admin/invitations）には招待トークンが含まれないため、同じサイト内へのRefererは問題にならない。
     no_store
-    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Referrer-Policy"] = "same-origin"
 
     @invitation_url = new_user_registration_url(invitation_token: @invitation.token)
     render :created, status: :created
