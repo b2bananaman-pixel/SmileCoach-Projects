@@ -48,13 +48,26 @@ class Admin::DashboardControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "ユーザー招待から招待一覧へ移動できる" do
+    sign_in @admin
+
+    get admin_root_path
+
+    assert_response :success
+    assert_select "[data-admin-dashboard-section=invitations]" do
+      assert_select "h2", text: "ユーザー招待"
+      assert_select "a[href='#{admin_invitations_path}']", text: "招待一覧"
+    end
+  end
+
   test "管理画面には未実装の機能へのリンクを表示しない" do
     sign_in @admin
 
     get admin_root_path
 
     assert_response :success
-    assert_select "[data-admin-dashboard] a", count: 2
+    # 商材一覧・カテゴリ管理・招待一覧の3件
+    assert_select "[data-admin-dashboard] a", count: 3
     assert_select "[data-admin-dashboard-section=roleplay_scenarios] a", count: 0
     assert_select "[data-admin-dashboard] form", count: 0
     assert_select "[data-admin-dashboard-section=roleplay_scenarios] .badge", text: "準備中", count: 1

@@ -41,5 +41,23 @@
         </div>
       </div>
     </div>
+
+    <div class="col-md-6 col-lg-5">
+      <div class="card h-100 shadow-sm" data-admin-dashboard-section="invitations">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="card-title h4 mb-0">ユーザー招待</h2>
+          </div>
+
+          <p class="card-text">
+            新しく利用する人へ、1回だけ使える招待リンク（有効期限<%= Invitation::EXPIRES_IN.in_days.to_i %>日）を発行します。
+          </p>
+
+          <div class="d-flex gap-2">
+            <%= link_to "招待一覧", admin_invitations_path, class: "btn btn-primary btn-sm" %>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>

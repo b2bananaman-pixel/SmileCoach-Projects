@@ -1,0 +1,61 @@
+<% content_for :title, "ユーザー招待" %>
+
+<div class="container py-5" data-admin-invitations>
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">ユーザー招待</h1>
+    <%= link_to "招待リンクを発行する", new_admin_invitation_path, class: "btn btn-primary" %>
+  </div>
+
+  <p class="text-muted">
+    招待リンクは1回だけ利用でき、発行から<%= Invitation::EXPIRES_IN.in_days.to_i %>日で期限が切れます。
+    招待リンクは発行した直後の画面にだけ表示され、この一覧には表示されません。リンクがわからなくなった場合は、取り消してから発行し直してください。
+  </p>
+
+  <% if @invitations.empty? %>
+    <p>発行した招待はありません。</p>
+  <% else %>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th scope="col">メールアドレス</th>
+            <th scope="col">状態</th>
+            <th scope="col">有効期限</th>
+            <th scope="col">発行者</th>
+            <th scope="col">発行日時</th>
+            <th scope="col">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @invitations.each do |invitation| %>
+            <% status = invitation.status(now: @now) %>
+            <tr data-invitation-id="<%= invitation.id %>" data-invitation-status="<%= status %>">
+              <td><%= invitation.email %></td>
+              <td>
+                <span class="badge <%= { pending: "bg-primary", accepted: "bg-success", revoked: "bg-secondary", expired: "bg-warning text-dark" }.fetch(status) %>">
+                  <%= invitation.status_label(now: @now) %>
+                </span>
+              </td>
+              <td><%= l invitation.expires_at, format: "%Y/%m/%d %H:%M" %></td>
+              <td><%= invitation.invited_by&.name || "削除されたユーザー" %></td>
+              <td><%= l invitation.created_at, format: "%Y/%m/%d %H:%M" %></td>
+              <td>
+                <% if status == :pending %>
+                  <%= button_to "取り消す",
+                                revoke_admin_invitation_path(invitation),
+                                method: :patch,
+                                class: "btn btn-outline-danger btn-sm",
+                                form: { data: { turbo_confirm: "#{invitation.email}への招待を取り消しますか？\n取り消した招待リンクは利用できなくなります。" } } %>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% end %>
+
+  <div class="d-flex gap-2 mt-4">
+    <%= link_to "管理画面トップへ", admin_root_path, class: "btn btn-outline-secondary" %>
+  </div>
+</div>

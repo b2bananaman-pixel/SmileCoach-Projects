@@ -12,6 +12,7 @@ ja:
     models:
       product_category: "カテゴリ"
       product: "商材"
+      invitation: "招待"
 
     attributes:
       product_category:
@@ -29,6 +30,9 @@ ja:
         proposal_points: "提案ポイント"
         confirmation_items: "確認すべき事項"
         published: "公開状態"
+      invitation:
+        email: "メールアドレス"
+        expires_at: "有効期限"
 
     errors:
       models:
@@ -38,3 +42,8 @@ ja:
               invalid_url: "はhttp://またはhttps://から始まるURLを入力してください"
             product_category:
               inactive: "は無効なため選択できません"
+        invitation:
+          attributes:
+            email:
+              already_registered: "はすでに登録されています"
+              already_invited: "には有効な招待がすでにあります。再発行する場合は、一覧で取り消してから発行してください"

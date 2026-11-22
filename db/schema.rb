@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_11_19_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_11_22_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -116,6 +116,28 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_19_100000) do
     t.index ["practice_id"], name: "index_analyses_on_practice_id"
   end
 
+  create_table "invitations", force: :cascade do |t|
+    t.string "email", null: false
+    t.string "token_digest", null: false
+    t.bigint "invited_by_id"
+    t.datetime "expires_at", null: false
+    t.datetime "accepted_at"
+    t.bigint "accepted_user_id"
+    t.datetime "revoked_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["accepted_user_id"], name: "index_invitations_on_accepted_user_id", unique: true
+    t.index ["email"], name: "index_invitations_on_email"
+    t.index ["email"], name: "index_invitations_on_email_pending_unique", unique: true, where: "((accepted_at IS NULL) AND (revoked_at IS NULL))"
+    t.index ["invited_by_id"], name: "index_invitations_on_invited_by_id"
+    t.index ["token_digest"], name: "index_invitations_on_token_digest", unique: true
+    t.check_constraint "accepted_at IS NULL OR revoked_at IS NULL", name: "invitations_not_accepted_and_revoked"
+    t.check_constraint "accepted_user_id IS NULL OR accepted_at IS NOT NULL", name: "invitations_accepted_user_requires_accepted_at"
+    t.check_constraint "email::text = lower(btrim(email::text)) AND email::text <> ''::text", name: "invitations_email_normalized"
+    t.check_constraint "expires_at > created_at", name: "invitations_expires_after_created"
+    t.check_constraint "token_digest::text ~ '^[0-9a-f]{64}$'::text", name: "invitations_token_digest_format"
+  end
+
   create_table "practice_themes", force: :cascade do |t|
     t.string "name"
     t.text "description"
@@ -192,6 +214,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_11_19_100000) do
   add_foreign_key "ai_roleplay_sessions", "products"
   add_foreign_key "ai_roleplay_sessions", "users"
   add_foreign_key "analyses", "practices"
+  add_foreign_key "invitations", "users", column: "accepted_user_id", on_delete: :nullify
+  add_foreign_key "invitations", "users", column: "invited_by_id", on_delete: :nullify
   add_foreign_key "practices", "ai_roleplay_sessions"
   add_foreign_key "practices", "practice_themes"
   add_foreign_key "practices", "users"
