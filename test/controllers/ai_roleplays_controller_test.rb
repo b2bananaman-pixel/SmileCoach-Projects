@@ -1927,6 +1927,228 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
     attachment_queries.each { |sql| assert_no_match(/LIMIT/, sql) }
   end
 
+  test "録画があるAIロープレの評価結果に、確認ダイアログ付きの動画の削除ボタンを表示する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    get evaluation_ai_roleplay_path(session)
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-video]" do
+      assert_select "form[data-ai-roleplay-video-delete][action=?][method=post]", video_ai_roleplay_path(session) do |forms|
+        assert_includes forms.first["data-turbo-confirm"], "録画動画を削除しますか？"
+        assert_includes forms.first["data-turbo-confirm"], "AI評価・会話履歴・練習日時は残ります"
+        assert_select "input[name=_method][value=delete]", count: 1
+        assert_select "button", text: "動画を削除"
+      end
+      assert_select "p", text: "録画は練習日から14日を過ぎると自動的に削除されます。"
+    end
+  end
+
+  test "録画がないAIロープレの評価結果には動画の削除ボタンを表示しない" do
+    sign_in @user
+
+    get evaluation_ai_roleplay_path(ai_roleplay_sessions(:one))
+
+    assert_response :success
+    assert_select "[data-ai-roleplay-video-delete]", count: 0
+    assert_select "[data-ai-roleplay-video-empty]", text: "録画データはありません"
+  end
+
+  test "本人の録画を削除すると評価画面へ戻り、録画だけを削除して学習記録は残す" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+    create_voice_analysis(session)
+    practice = session.reload.practice
+    practice.audio.attach(io: StringIO.new(File.binread(VIDEO_FIXTURE)), filename: "clerk_audio.webm", content_type: "audio/webm")
+    blob = session.video.blob
+    evaluation_id = session.ai_roleplay_evaluation.id
+    message_ids = session.ai_roleplay_messages.ids.sort
+    started_at = session.started_at
+    created_at = session.created_at
+
+    assert_no_difference([ "AiRoleplaySession.count", "AiRoleplayEvaluation.count", "AiRoleplayMessage.count",
+                           "Practice.count", "Analysis.count" ]) do
+      delete video_ai_roleplay_path(session)
+    end
+
+    assert_redirected_to evaluation_ai_roleplay_path(session)
+    assert_response :see_other
+    assert_equal AiRoleplaysController::VIDEO_DELETED_MESSAGE, flash[:notice]
+
+    assert_not session.reload.video.attached?
+    assert_not ActiveStorage::Blob.exists?(blob.id)
+    assert_not blob.service.exist?(blob.key)
+    assert AiRoleplayEvaluation.exists?(evaluation_id)
+    assert_equal message_ids, AiRoleplayMessage.where(id: message_ids).ids.sort
+    assert_equal started_at, session.started_at
+    assert_equal created_at, session.created_at
+    assert_equal "いらっしゃいませ", practice.reload.transcription
+    assert practice.audio.attached?
+    assert practice.analysis.present?
+
+    follow_redirect!
+
+    assert_response :success
+    assert_select ".alert-success", text: AiRoleplaysController::VIDEO_DELETED_MESSAGE
+    assert_select "[data-ai-roleplay-video-empty]", text: "録画データはありません"
+    assert_select "[data-ai-roleplay-video] video", count: 0
+    assert_select "[data-ai-roleplay-evaluation-category]", count: AiRoleplayEvaluation::CATEGORY_LABELS.size
+  end
+
+  test "録画を削除した後は録画URLが404になる" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    delete video_ai_roleplay_path(session)
+    get video_ai_roleplay_path(session)
+
+    assert_response :not_found
+  end
+
+  test "削除済みの録画をもう一度削除しても500にならず、削除済みである旨を表示する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    delete video_ai_roleplay_path(session)
+    delete video_ai_roleplay_path(session)
+
+    assert_redirected_to evaluation_ai_roleplay_path(session)
+    assert_equal AiRoleplaysController::VIDEO_ALREADY_DELETED_MESSAGE, flash[:notice]
+  end
+
+  test "録画がないAIロープレの削除は500にならず、削除済みである旨を表示する" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+
+    assert_no_difference("ActiveStorage::Attachment.count") do
+      delete video_ai_roleplay_path(session)
+    end
+
+    assert_redirected_to evaluation_ai_roleplay_path(session)
+    assert_equal AiRoleplaysController::VIDEO_ALREADY_DELETED_MESSAGE, flash[:notice]
+  end
+
+  test "他のユーザーの録画は削除できず404を返す" do
+    sign_in @user
+
+    other_session = ai_roleplay_sessions(:two)
+    attach_video(other_session)
+    blob = other_session.video.blob
+
+    assert_no_difference([ "ActiveStorage::Attachment.count", "ActiveStorage::Blob.count" ]) do
+      delete video_ai_roleplay_path(other_session)
+    end
+
+    assert_response :not_found
+    assert other_session.reload.video.attached?
+    assert blob.service.exist?(blob.key)
+  end
+
+  test "存在しないAIロープレの録画の削除は404を返す" do
+    sign_in @user
+
+    delete video_ai_roleplay_path(id: AiRoleplaySession.maximum(:id).to_i + 1)
+
+    assert_response :not_found
+  end
+
+  test "未ログインの場合は録画を削除せずログイン画面へリダイレクトする" do
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    assert_no_difference([ "ActiveStorage::Attachment.count", "ActiveStorage::Blob.count" ]) do
+      delete video_ai_roleplay_path(session)
+    end
+
+    assert_redirected_to new_user_session_path
+    assert session.reload.video.attached?
+  end
+
+  test "GETでは録画を削除しない" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    get video_ai_roleplay_path(session)
+
+    assert_response :found
+    assert session.reload.video.attached?
+  end
+
+  test "CSRFトークンのない削除リクエストは拒否し、録画を削除しない" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    with_forgery_protection do
+      assert_no_difference([ "ActiveStorage::Attachment.count", "ActiveStorage::Blob.count" ]) do
+        delete video_ai_roleplay_path(session)
+      end
+    end
+
+    assert_response :unprocessable_entity
+    assert session.reload.video.attached?
+  end
+
+  test "評価画面のフォームのCSRFトークンを使えば録画を削除できる" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+
+    with_forgery_protection do
+      get evaluation_ai_roleplay_path(session)
+      token = css_select("form[data-ai-roleplay-video-delete] input[name=authenticity_token]").first["value"]
+
+      delete video_ai_roleplay_path(session), params: { authenticity_token: token }
+    end
+
+    assert_redirected_to evaluation_ai_roleplay_path(session)
+    assert_not session.reload.video.attached?
+  end
+
+  test "録画の削除に失敗した場合はエラーを表示し、録画を残してストレージのキーをログに出さない" do
+    sign_in @user
+
+    session = ai_roleplay_sessions(:one)
+    attach_video(session)
+    blob = session.video.blob
+    log = StringIO.new
+    original_logger = Rails.logger
+    Rails.logger = ActiveSupport::Logger.new(log)
+
+    blob.service.stub(:delete, ->(key) { raise "failed to delete #{key}" }) do
+      delete video_ai_roleplay_path(session)
+    end
+
+    assert_redirected_to evaluation_ai_roleplay_path(session)
+    assert_equal AiRoleplaysController::VIDEO_DELETE_FAILED_MESSAGE, flash[:alert]
+    assert session.reload.video.attached?
+    assert blob.service.exist?(blob.key)
+    assert_includes log.string, "ai_roleplay_session_id=#{session.id}"
+    assert_includes log.string, "RuntimeError"
+    assert_not_includes log.string, blob.key
+    assert_not_includes log.string, "failed to delete"
+
+    follow_redirect!
+    assert_select ".alert-danger", text: AiRoleplaysController::VIDEO_DELETE_FAILED_MESSAGE
+    assert_select "[data-ai-roleplay-video] video", count: 1
+  ensure
+    Rails.logger = original_logger
+  end
+
   test "商材を起点に開始すると、AIロープレ画面に商材名と開始時点の商材情報のトークンを設定する" do
     sign_in @user
     product = products(:published_card)
@@ -2401,6 +2623,15 @@ class AiRoleplaysControllerTest < ActionDispatch::IntegrationTest
       assert_not_includes response.body, text
       assert_not_includes log.string, text
     end
+  end
+
+  # テスト環境では無効にしているCSRF対策を、ブロックの中だけ有効にする
+  def with_forgery_protection
+    original = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    yield
+  ensure
+    ActionController::Base.allow_forgery_protection = original
   end
 
   def attach_video(session)

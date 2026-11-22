@@ -15,6 +15,11 @@ class AiRoleplaysController < ApplicationController
   # 録画の転送先（ストレージの期限付きURL）の有効期限
   VIDEO_URL_EXPIRES_IN = 30.minutes
 
+  # 録画の削除結果のメッセージ
+  VIDEO_DELETED_MESSAGE = "録画動画を削除しました。評価結果と会話履歴は引き続き確認できます。".freeze
+  VIDEO_ALREADY_DELETED_MESSAGE = "録画動画はすでに削除されています。".freeze
+  VIDEO_DELETE_FAILED_MESSAGE = "録画動画を削除できませんでした。時間をおいて再度お試しください。".freeze
+
   # ローカルDisk保存でも録画の期限付きURLを生成できるように、URL生成用のホスト情報を設定する
   include ActiveStorage::SetCurrent
 
@@ -58,6 +63,18 @@ class AiRoleplaysController < ApplicationController
     head :found,
          location: ai_roleplay_session.video.url(expires_in: VIDEO_URL_EXPIRES_IN, disposition: :inline),
          "Referrer-Policy" => "no-referrer"
+  end
+
+  # 本人のAIロープレの録画だけを削除する（DELETE /ai_roleplays/:id/video）
+  #
+  # 評価・会話・話し方の分析などの学習記録は残す。録画がない（削除済み）場合も500にせず、評価画面へ戻す。
+  def destroy_video
+    # 他のユーザーのAIロープレや存在しないIDは404とする
+    ai_roleplay_session = current_user.ai_roleplay_sessions.find(params[:id])
+
+    redirect_to evaluation_ai_roleplay_path(ai_roleplay_session),
+                **delete_video_flash(ai_roleplay_session),
+                status: :see_other
   end
 
   # 商材のトークンは必須とし、商材を選択していない新規のAIロープレは保存しない
@@ -231,6 +248,20 @@ class AiRoleplaysController < ApplicationController
   end
 
   private
+
+  # 録画を削除し、結果に応じたメッセージを返す
+  def delete_video_flash(ai_roleplay_session)
+    result = AiRoleplayVideoDeletionService.new(ai_roleplay_session: ai_roleplay_session).call
+
+    { notice: result.deleted? ? VIDEO_DELETED_MESSAGE : VIDEO_ALREADY_DELETED_MESSAGE }
+  rescue StandardError => e
+    # 例外メッセージにストレージのキーやURLが含まれる可能性があるため、IDとクラス名のみ記録する
+    Rails.logger.error(
+      "[AiRoleplaysController#destroy_video] 録画を削除できませんでした: ai_roleplay_session_id=#{ai_roleplay_session.id} (#{e.class})"
+    )
+
+    { alert: VIDEO_DELETE_FAILED_MESSAGE }
+  end
 
   # 評価画面から練習を選び直す導線
   #

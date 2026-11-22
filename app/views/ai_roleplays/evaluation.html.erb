@@ -194,11 +194,29 @@
                           controls: true,
                           preload: "metadata",
                           class: "w-100 rounded" %>
+
+            <%# 録画だけを削除する（評価・会話などの学習記録は残す） %>
+            <div class="d-flex justify-content-end mt-3">
+              <%= button_to "動画を削除",
+                            video_ai_roleplay_path(@ai_roleplay_session),
+                            method: :delete,
+                            class: "btn btn-outline-danger btn-sm",
+                            form: {
+                              data: {
+                                ai_roleplay_video_delete: true,
+                                turbo_confirm: "録画動画を削除しますか？\n削除した動画は元に戻せません。\n※AI評価・会話履歴・練習日時は残ります。"
+                              }
+                            } %>
+            </div>
           <% else %>
             <p class="mb-0 text-muted" data-ai-roleplay-video-empty>
               録画データはありません
             </p>
           <% end %>
+
+          <p class="small text-muted mt-2 mb-0">
+            録画は練習日から14日を過ぎると自動的に削除されます。
+          </p>
         </div>
       </div>
 
