@@ -183,6 +183,15 @@
   - 本番：Renderデプロイ成功。ユーザーが本番で7項目（ログイン、マイページ表示、AIロープレ開始、会話・音声認識、録画・保存、AI評価結果表示、過去の練習履歴・録画表示）を確認
   - 注記：worktreeにはビルド済みCSSがないため、初回のテストで134件のエラー（application.cssがない）が出た。イメージ内でビルドしたCSSを、管理対象外のapp/assets/builds/へコピーして解消した
   - 今後の課題：Rails 7.2のサポート終了（Brakeman EOLRails、2026-08-09）への対応（Rails 8系への更新）を別Issueで行う
+- b2bananaman-pixel/smile_coach#89 AIロープレの練習履歴から録画動画を手動削除できるようにする（CLOSED 2026-11-22）
+  - PR：b2bananaman-pixel/SmileCoach-Projects#133、マージコミット aa822eaed256f57c68d4c63a5d189a89c8e8bd0a
+  - 実装：DELETE /ai_roleplays/:id/videoでAiRoleplaySession#videoの添付だけを削除（セッションはdestroyしない）。current_user.ai_roleplay_sessionsから検索し他ユーザー・存在しないIDは404。評価画面の録画データカードに確認ダイアログ付きの「動画を削除」ボタン（フォームにdata-turbo-confirm）
+  - 削除処理：AiRoleplayVideoDeletionServiceで同期的に削除（purge_laterは使わない）。添付情報の行だけをロックして14日間の自動削除とロック順をそろえ、GCSのファイルを先に削除してから添付情報・blobを削除。共有blobは関連付けだけを外し、削除済みは「すでに削除されています」と表示
+  - 保持：AI評価・改善コメント・会話履歴・練習日時・Practice・Analysis・発話音声・文字起こし。既存の14日間自動削除（Service・rakeタスク・ワークフロー）、DB、JavaScriptは変更なし
+  - テスト：691 runs、5677 assertions、0 failures、0 errors、0 skips（変更前664 runs、追加27件）
+  - RuboCop：145ファイル・違反0件、Brakeman：警告0件（EOLRuby・EOLRailsは除外）、importmap audit：脆弱性なし、Zeitwerk：正常、PR CI（run 45000288850）・main CI（run 45000692589、lint・scan_js・scan_ruby・test）全4ジョブ成功
+  - 本番：2026-11-22にユーザーが本番動作確認10項目すべての成功を報告。Claude Codeは外部からのGETで/up・/の200を確認（RenderのLiveはClaude Codeからは直接確認していない。本番へのDELETEは未実行）
+  - 注記：本番のAI_ROLEPLAY_VIDEO_RETENTION_ENABLEDは、自動削除ワークフローのログでtrueであることを確認
 ## 10. 完了報告
 - 変更したファイルと変更内容を報告する。
 - 実行したテストコマンドと結果を報告する。
