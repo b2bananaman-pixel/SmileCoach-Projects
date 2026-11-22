@@ -1,0 +1,27 @@
+<% content_for :title, "招待リンクの発行" %>
+
+<div class="container py-5" style="max-width: 720px;" data-admin-invitation-form>
+  <h1 class="mb-4">招待リンクの発行</h1>
+
+  <%# 発行結果（招待リンク）はリダイレクトせずに表示するため、Turboを使わずに送信する %>
+  <%= form_with model: [ :admin, @invitation ], data: { turbo: false } do |f| %>
+    <%= render "admin/shared/error_messages", record: @invitation %>
+
+    <div class="mb-3">
+      <%= f.label :email, class: "form-label" %>
+      <span class="badge bg-danger">必須</span>
+      <%= f.email_field :email, class: "form-control", maxlength: Invitation::EMAIL_MAX_LENGTH, required: true, autocomplete: "off" %>
+      <div class="form-text">招待した人は、このメールアドレスでのみ登録できます。</div>
+    </div>
+
+    <div class="alert alert-warning" role="note">
+      招待リンクを知っている人は、このメールアドレスで登録できます（メールアドレスの持ち主かどうかの確認は行いません）。
+      招待リンクは、招待する本人にだけLINEやメールなどで伝えてください。
+    </div>
+
+    <div class="d-flex gap-2">
+      <%= f.submit "招待リンクを発行する", class: "btn btn-primary" %>
+      <%= link_to "招待一覧へ戻る", admin_invitations_path, class: "btn btn-outline-secondary" %>
+    </div>
+  <% end %>
+</div>

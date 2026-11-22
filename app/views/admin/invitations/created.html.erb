@@ -1,0 +1,27 @@
+<% content_for :title, "招待リンクを発行しました" %>
+
+<div class="container py-5" style="max-width: 720px;" data-admin-invitation-created>
+  <h1 class="mb-4">招待リンクを発行しました</h1>
+
+  <div class="alert alert-warning" role="alert">
+    <strong>この招待リンクは、この画面でだけ表示されます。</strong>
+    画面を閉じると再表示できないため、今すぐコピーして、招待する本人にだけ伝えてください。
+  </div>
+
+  <dl class="row mb-3">
+    <dt class="col-sm-3">メールアドレス</dt>
+    <dd class="col-sm-9" data-invitation-email><%= @invitation.email %></dd>
+
+    <dt class="col-sm-3">有効期限</dt>
+    <dd class="col-sm-9"><%= l @invitation.expires_at, format: "%Y/%m/%d %H:%M" %>（1回だけ利用できます）</dd>
+  </dl>
+
+  <div class="mb-4">
+    <label for="invitation_url" class="form-label">招待リンク</label>
+    <input type="text" id="invitation_url" class="form-control" value="<%= @invitation_url %>" readonly data-invitation-url>
+  </div>
+
+  <div class="d-flex gap-2">
+    <%= link_to "招待一覧へ", admin_invitations_path, class: "btn btn-outline-secondary" %>
+  </div>
+</div>

@@ -50,6 +50,11 @@ Rails.application.routes.draw do
       end
     end
 
+    # 新規登録の招待（Issue #90）。招待は削除せず、取り消しは専用のアクションでのみ行う
+    resources :invitations, only: %i[index new create] do
+      patch :revoke, on: :member
+    end
+
     # 最高管理者専用の機能（GET /admin/super_admin）
     namespace :super_admin do
       root to: "dashboard#show"
