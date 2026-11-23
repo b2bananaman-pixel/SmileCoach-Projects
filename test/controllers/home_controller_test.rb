@@ -29,11 +29,12 @@ class HomeControllerTest < ActionDispatch::IntegrationTest
     assert_select "a[href='#{new_user_registration_path}']", count: 0
   end
 
-  test "新規登録とログインへのリンクが表示される" do
+  test "ログインフォームとパスワード再設定へのリンクを表示し、新規登録は招待制と案内する" do
     get home_index_url
 
     assert_response :success
-    assert_select "a[href='#{new_user_registration_path}']", text: "新規登録（無料）"
+    assert_select "a[href='#{new_user_registration_path}']", count: 0
+    assert_select "[data-invitation-only-note]", text: "新規登録は管理者からの招待制です"
     assert_select "a[href='#{new_user_password_path}']", text: "パスワードをお忘れの方はこちら"
     assert_select "form[action='#{user_session_path}'] button[type='submit']", text: "ログイン"
   end

@@ -4,19 +4,23 @@
     <div class="col-md-6 col-lg-5">
       <div class="card shadow-sm p-4">
 
-        <h2 class="text-center mb-4">新規登録</h2>
+        <h2 class="text-center mb-3">新規登録</h2>
+        <p class="text-center text-muted mb-4" data-invitation-signup-note>管理者からの招待で登録します。</p>
 
         <%= form_for(resource, as: resource_name, url: registration_path(resource_name)) do |f| %>
           <%= render "devise/shared/error_messages", resource: resource %>
 
           <div class="mb-3">
             <%= f.label :name, "名前", class: "form-label" %>
-            <%= f.text_field :name, class: "form-control" %>
+            <%= f.text_field :name, autofocus: true, class: "form-control" %>
           </div>
 
           <div class="mb-3">
             <%= f.label :email, "メールアドレス", class: "form-label" %>
-            <%= f.email_field :email, autofocus: true, autocomplete: "email", class: "form-control" %>
+            <%# 招待先のメールアドレスで登録する（送信された値はサーバー側で使わない） %>
+            <%= f.email_field :email, readonly: true, autocomplete: "email", class: "form-control-plaintext",
+                                      aria: { describedby: "invitation-email-help" }, data: { invitation_email: true } %>
+            <div id="invitation-email-help" class="form-text">招待されたメールアドレスで登録します（変更できません）。</div>
           </div>
 
           <div class="mb-3">

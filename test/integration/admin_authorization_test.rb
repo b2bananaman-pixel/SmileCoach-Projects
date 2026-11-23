@@ -52,6 +52,10 @@ class AdminAuthorizationTest < ActionDispatch::IntegrationTest
   end
 
   test "新規登録でadmin・roleを送信しても一般ユーザーとして登録される" do
+    invitation = Invitation.issue(email: "admin-attempt@example.com", invited_by: users(:admin))
+    get new_user_registration_path(invitation_token: invitation.token)
+    follow_redirect!
+
     assert_difference("User.count", 1) do
       post user_registration_path, params: {
         user: {

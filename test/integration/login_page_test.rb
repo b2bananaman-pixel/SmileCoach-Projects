@@ -14,7 +14,8 @@ class LoginPageTest < ActionDispatch::IntegrationTest
       assert_select "input[type='checkbox'][name='user[remember_me]']"
     end
     assert_select "a[href='#{new_user_password_path}']", text: "パスワードをお忘れの方はこちら"
-    assert_select "a[href='#{new_user_registration_path}']", text: "新規登録（無料）"
+    assert_select "a[href='#{new_user_registration_path}']", count: 0
+    assert_select "[data-invitation-only-note]", text: "新規登録は管理者からの招待制です"
   end
 
   test "トップ画面のフォームから正しい認証情報でログインできる" do
@@ -41,18 +42,17 @@ class LoginPageTest < ActionDispatch::IntegrationTest
     assert_select "form[action='#{user_session_path}'] input[name='user[email]'][value='#{user.email}']"
   end
 
-  test "ログイン画面から新規登録画面とパスワード再設定画面へ移動できる" do
+  test "ログイン画面からパスワード再設定画面へ移動でき、新規登録は招待制と案内する" do
     get new_user_session_path
-    assert_select "a[href='#{new_user_registration_path}']"
+    assert_select "a[href='#{new_user_registration_path}']", count: 0
     assert_select "a[href='#{new_user_password_path}']"
-
-    get new_user_registration_path
-    assert_response :success
-    assert_select "h2", text: "新規登録"
 
     get new_user_password_path
     assert_response :success
     assert_select "h2", text: "パスワードをお忘れですか？"
+    # Devise共通のリンクにも、自由登録へのリンクを表示しない
+    assert_select "a[href='#{new_user_registration_path}']", count: 0
+    assert_select "[data-invitation-only-note]", text: "新規登録は管理者からの招待制です"
   end
 
   test "ログイン済みユーザーは練習カテゴリ選択画面へ進める" do
