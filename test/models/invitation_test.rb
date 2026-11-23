@@ -234,6 +234,121 @@ class InvitationTest < ActiveSupport::TestCase
     end
   end
 
+  # ---- 新規登録での利用（PR 2） ----
+
+  test "有効な招待のトークンから招待を検索できる" do
+    invitation = issue("new-member@example.com")
+
+    assert_equal invitation, Invitation.find_usable_by_token(invitation.token)
+  end
+
+  test "不正・空・文字列以外のトークンや、ダイジェストそのものでは招待を検索できない" do
+    invitation = issue("new-member@example.com")
+
+    [ "invalid-token", "", nil, [ invitation.token ], { token: invitation.token }, invitation.token_digest ].each do |token|
+      assert_nil Invitation.find_usable_by_token(token), "#{token.inspect}で検索できてはいけない"
+    end
+  end
+
+  test "期限切れ・使用済み・取り消し済みの招待は、トークンからもIDからも検索できない" do
+    expired = travel_to(8.days.ago) { issue("expired@example.com") }
+    accepted = issue("accepted@example.com")
+    accepted.update!(accepted_at: Time.current)
+    revoked = issue("revoked@example.com")
+    revoked.revoke!
+
+    [ expired, accepted, revoked ].each do |invitation|
+      assert_nil Invitation.find_usable_by_token(invitation.token), invitation.email
+      assert_nil Invitation.find_usable(invitation.id), invitation.email
+    end
+  end
+
+  test "存在しない・空の招待IDでは検索できない" do
+    assert_nil Invitation.find_usable(nil)
+    assert_nil Invitation.find_usable("")
+    assert_nil Invitation.find_usable(0)
+  end
+
+  test "招待を使って登録すると、招待先のメールアドレスで一般ユーザーを作成し、招待を使用済みにする" do
+    invitation = issue("new-member@example.com")
+    user = User.new(name: "新規ユーザー", email: "other@example.com", password: "password", password_confirmation: "password")
+
+    travel_to Time.zone.local(2026, 11, 23, 10, 0, 0) do
+      assert_difference("User.count", 1) do
+        assert invitation.accept_with(user)
+      end
+
+      invitation.reload
+      assert user.persisted?
+      assert_equal "new-member@example.com", user.reload.email
+      assert user.user?
+      assert_equal user, invitation.accepted_user
+      assert_equal Time.zone.local(2026, 11, 23, 10, 0, 0), invitation.accepted_at
+      assert_equal :accepted, invitation.status
+    end
+  end
+
+  test "ユーザーの入力に誤りがある場合は、ユーザーを作成せず招待を未使用のまま残す" do
+    invitation = issue("new-member@example.com")
+    user = User.new(name: "", password: "password", password_confirmation: "different")
+
+    assert_no_difference("User.count") do
+      assert_not invitation.accept_with(user)
+    end
+
+    assert_not user.persisted?
+    assert user.errors.include?(:name)
+    assert user.errors.include?(:password_confirmation)
+    assert invitation.reload.usable?
+    assert_nil invitation.accepted_user_id
+  end
+
+  test "招待先のメールアドレスが登録済みになっていた場合は、ユーザーを作成せず招待を未使用のまま残す" do
+    invitation = issue("new-member@example.com")
+    users(:one).update!(email: "new-member@example.com")
+    user = User.new(name: "新規ユーザー", password: "password", password_confirmation: "password")
+
+    assert_no_difference("User.count") do
+      assert_not invitation.accept_with(user)
+    end
+
+    assert user.errors.include?(:email)
+    assert invitation.reload.usable?
+  end
+
+  test "登録の直前に招待が使用済み・取り消し済み・期限切れになっていた場合は、ユーザーを作成しない" do
+    accepted = issue("accepted@example.com")
+    revoked = issue("revoked@example.com")
+    expired = issue("expired@example.com")
+
+    # 別のリクエストで状態が変わった場合を想定し、メモリ上の招待は未使用のまま、DBだけを更新する
+    raw_update(accepted, "accepted_at = NOW()")
+    raw_update(revoked, "revoked_at = NOW()")
+
+    [ [ accepted, Time.current ], [ revoked, Time.current ], [ expired, expired.expires_at ] ].each do |invitation, now|
+      assert invitation.usable?(now: Time.current)
+      user = User.new(name: "新規ユーザー", password: "password", password_confirmation: "password")
+
+      assert_no_difference("User.count") do
+        assert_raises(Invitation::NotUsableError) { invitation.accept_with(user, now: now) }
+      end
+      assert_not user.persisted?
+    end
+  end
+
+  test "同じ招待で2回登録することはできない（読み込み済みの古い招待を使っても行ロックで再確認する）" do
+    invitation = issue("new-member@example.com")
+    stale = Invitation.find(invitation.id)
+
+    assert invitation.accept_with(User.new(name: "1人目", password: "password", password_confirmation: "password"))
+
+    assert_no_difference("User.count") do
+      assert_raises(Invitation::NotUsableError) do
+        stale.accept_with(User.new(name: "2人目", password: "password", password_confirmation: "password"))
+      end
+    end
+  end
+
   private
 
   def issue(email)

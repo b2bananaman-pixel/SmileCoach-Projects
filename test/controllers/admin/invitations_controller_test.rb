@@ -345,11 +345,18 @@ class Admin::InvitationsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "招待の発行は既存の自由登録を停止しない（PR 1の段階）" do
-    get new_user_registration_path
+  test "発行した招待リンクから新規登録画面を開ける" do
+    sign_in @admin
+    post admin_invitations_path, params: { invitation: { email: "new-member@example.com" } }
+    invitation_url = css_select("[data-invitation-url]").first["value"]
+    sign_out :user
+
+    get invitation_url
+    follow_redirect!
 
     assert_response :success
     assert_select "h2", text: "新規登録"
+    assert_select "input[name='user[email]'][readonly][value='new-member@example.com']"
   end
 
   private

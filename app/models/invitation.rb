@@ -17,6 +17,8 @@ class Invitation < ApplicationRecord
   }.freeze
 
   class NotRevocableError < StandardError; end
+  # 登録時に、招待が使用済み・取り消し済み・期限切れになっていた場合に発生する
+  class NotUsableError < StandardError; end
 
   belongs_to :invited_by, class_name: "User", optional: true
   belongs_to :accepted_user, class_name: "User", optional: true
@@ -61,6 +63,23 @@ class Invitation < ApplicationRecord
     invitation
   end
 
+  # 招待リンクのトークンから、登録に利用できる招待を探す（見つからない・利用できない場合はnil）
+  #
+  # トークンはダイジェストにしてから検索するため、生のトークンはDBへの問い合わせにも含まれない。
+  # 配列・ハッシュなど文字列以外のパラメータは、不正なトークンとして扱う。
+  def self.find_usable_by_token(token, now: Time.current)
+    return unless token.is_a?(String) && token.present?
+
+    find_by(token_digest: digest(token))&.then { |invitation| invitation if invitation.usable?(now: now) }
+  end
+
+  # セッションに保存した招待IDから、登録に利用できる招待を探す（見つからない・利用できない場合はnil）
+  def self.find_usable(id, now: Time.current)
+    return if id.blank?
+
+    find_by(id: id)&.then { |invitation| invitation if invitation.usable?(now: now) }
+  end
+
   def self.release_expired_pending(email, now:)
     where(email: email, accepted_at: nil, revoked_at: nil)
       .where(expires_at: ..now)
@@ -100,6 +119,34 @@ class Invitation < ApplicationRecord
 
       update!(revoked_at: now)
     end
+  end
+
+  # 招待を使ってユーザーを登録する（登録できた場合はtrue、ユーザーの入力に誤りがある場合はfalse）
+  #
+  # 同時に同じ招待で登録されても1件だけ成功するよう、招待の行をロックしてから有効性を確かめ、
+  # ユーザーの作成と招待の使用済み化を同じトランザクションで行う。
+  # ユーザーを保存できなかった場合はロールバックし、招待は未使用のまま残す（エラーはuserに入る）。
+  # メールアドレスは送信された値を使わず、招待先のメールアドレスにする。
+  # 招待が使用済み・取り消し済み・期限切れになっていた場合は NotUsableError を発生させる。
+  def accept_with(user, now: Time.current)
+    accepted = false
+
+    transaction do
+      lock!
+      raise NotUsableError unless usable?(now: now)
+
+      user.email = email
+      raise ActiveRecord::Rollback unless user.save
+
+      update!(accepted_at: now, accepted_user: user)
+      accepted = true
+    end
+
+    accepted
+  rescue ActiveRecord::RecordNotUnique
+    # 同じメールアドレスのユーザーが同時に作成された場合（usersのemailの一意インデックス）
+    user.errors.add(:email, :taken)
+    false
   end
 
   private

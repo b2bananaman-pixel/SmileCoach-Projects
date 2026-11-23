@@ -50,8 +50,8 @@
 
 <div class="auth-divider" role="presentation"><span>または</span></div>
 
-<%= link_to new_user_registration_path, class: "btn auth-register-button w-100" do %>
+<%# 新規登録は招待リンクからだけ行えるため、自由登録へのボタンは表示しない（Issue #90） %>
+<p class="text-center text-muted mb-0" data-invitation-only-note>
   <i class="bi bi-person-plus" aria-hidden="true"></i>
-  <span>新規登録（無料）</span>
-  <i class="bi bi-chevron-right" aria-hidden="true"></i>
-<% end %>
+  <span>新規登録は管理者からの招待制です</span>
+</p>
