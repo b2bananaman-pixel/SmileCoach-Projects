@@ -192,6 +192,24 @@
   - RuboCop：145ファイル・違反0件、Brakeman：警告0件（EOLRuby・EOLRailsは除外）、importmap audit：脆弱性なし、Zeitwerk：正常、PR CI（run 45000288850）・main CI（run 45000692589、lint・scan_js・scan_ruby・test）全4ジョブ成功
   - 本番：2026-11-22にユーザーが本番動作確認10項目すべての成功を報告。Claude Codeは外部からのGETで/up・/の200を確認（RenderのLiveはClaude Codeからは直接確認していない。本番へのDELETEは未実行）
   - 注記：本番のAI_ROLEPLAY_VIDEO_RETENTION_ENABLEDは、自動削除ワークフローのログでtrueであることを確認
+- b2bananaman-pixel/smile_coach#90 新規ユーザー登録を管理者の招待制にする（CLOSED 2026-11-24、受け入れ条件19項目すべて完了）
+  - 目的：URLを知っている人が自由に登録できる状態をやめ、録画の保存容量や外部AI APIの使用量が想定外に増えるのを防ぐため、管理者が招待した人だけが新規登録できるようにする
+  - PR：b2bananaman-pixel/SmileCoach-Projects#135（招待の発行・一覧・取り消し、マージコミット b87e42ab57f51c333047bd4faa391fbad2a29000）、b2bananaman-pixel/SmileCoach-Projects#136（CSRFエラー修正、マージコミット 3c8b41be1e0275d18e5e7eaf90f39cf6dc9c6042）、b2bananaman-pixel/SmileCoach-Projects#137（新規登録の招待必須化、マージコミット 4d0917d1681228376f37bc4cbcab5c79a012b6f0）
+  - 招待（PR #135）：invitationsテーブル・Invitationモデル（マイグレーション20261122100000）。管理者（admin・super_admin）だけが管理画面で招待先メールアドレスを指定して発行・一覧・取り消しでき、一般ユーザーは404。有効期限は発行から7日、1回限り。登録済みメールと、有効な招待があるメールへの発行は拒否（部分一意インデックス）。招待リンクは発行直後の画面に1回だけ表示し、メールの自動送信はしない
+  - トークン：SecureRandom.urlsafe_base64(32)（256ビット）。DBにはSHA-256ダイジェストだけを保存し、セッションには招待IDだけを保存。filter_parametersの:tokenでRailsログは invitation_token=[FILTERED]
+  - CSRF修正（PR #136）：招待発行完了画面のReferrer-Policy: no-referrerがTurboの画面移動後も文書に残り、次の通常のフォーム送信がOrigin: nullとなってCSRFのOrigin検証で422になっていた（本番で2回目の発行時に発生）。same-originに変更し、no-storeは維持
+  - 登録（PR #137）：招待リンク（GET /users/sign_up?invitation_token=…）でトークンを検証し、招待IDだけをセッションに保存して、トークンを含まないURLへ303でリダイレクト。招待なし・無効・期限切れ・使用済み・取り消し済みは「招待リンクが無効か有効期限が切れています」でログイン画面へ。招待なしのPOST /usersも拒否
+  - メールアドレス：送信値を使わず招待先メールアドレスに固定（登録フォームは読み取り専用）。登録後のメールアドレス変更は従来どおり可能
+  - トランザクション：Invitation#accept_withで招待の行をロックして有効性を再確認し、ユーザーの作成とaccepted_at・accepted_user_idの設定を同じトランザクションで行う。入力エラー時はロールバックして招待は未使用のまま
+  - 権限：role・adminはDeviseのsign_upの許可パラメータに含まれず、登録時は常に一般ユーザー
+  - 既存への影響：PR #137のデプロイで本番の自由登録を停止。「新規登録（無料）」ボタンとDevise共通の新規登録リンクは「新規登録は管理者からの招待制です」に変更。既存ユーザーのログイン・パスワード再設定・アカウント編集・退会、AIロープレ・録画・評価・履歴は変更なし
+  - テスト：731 runs、5942 assertions（PR #135）→ 734 runs、5963 assertions（PR #136）→ 762 runs、6212 assertions、0 failures、0 errors、0 skips（PR #137）。同時登録は、トランザクションを使わないテストで別々のDB接続の2スレッドから確認
+  - RuboCop：151ファイル・違反0件、Brakeman：警告0件（EOLRuby・EOLRailsは除外）、importmap audit：脆弱性なし、Zeitwerk：正常。PR CI（run 45025649154・45034512192・45121577874）・main CI（run 45028901924・45037866057・45152175697、lint・scan_js・scan_ruby・test）全4ジョブ成功
+  - 本番：PR #135後にNeonバックアップブランチを作成してマージ、PR 1の本番確認16項目を確認。PR #137前にもバックアップブランチを作成。2026-11-24にユーザーが4d0917dのLiveを確認し、本番動作確認13項目すべて合格（招待制の案内・自由登録の廃止、招待なし登録の拒否、招待発行、登録画面表示、メールアドレス変更不可、登録・自動ログイン、使用済みへの更新、使用済み・取り消し済みリンクの拒否、一般ユーザーの管理画面404、既存ユーザー・データ、AIロープレ関連画面、Renderログ）。Renderログで500・InvalidForeignKey・PG::Error・InvalidAuthenticityToken・RecordInvalid・FATAL・ERRORの該当なし
+  - テストユーザー：本番DBをSELECTだけで確認したうえで、通常の退会機能で削除。退会後も招待はaccepted_user_idがNULLになるだけで、使用済みの状態・accepted_at・招待先メールアドレス・発行者は保持され、使用済みリンクは再利用できない
+  - 本番で省略：期限切れの拒否・同時登録・権限パラメータ・トークンのログ出力は自動テストで確認。退会後の同じメールアドレスへの再招待とAIロープレ履歴を持つユーザーの退会は、ローカルの一時テストで確認（コミットしていない）
+  - 既存の制約：招待リンクのURLはブラウザ履歴・外部（エッジ）アクセスログ・共有に使ったLINEやメールに残る可能性があり、リンクを知った第三者が先に登録できるリスクもある（1回限り・7日・取り消しで影響を抑える）
+  - 今後の課題：b2bananaman-pixel/smile_coach#91 退会機能の安全性向上と日本語表示の改善（通常録画履歴があるユーザーの退会で外部キー制約違反の500、退会後の録音・録画ファイルの削除保証、退会の回帰テスト、退会完了メッセージのTranslation missing、退会ボタン・確認ダイアログの日本語化）
 ## 10. 完了報告
 - 変更したファイルと変更内容を報告する。
 - 実行したテストコマンドと結果を報告する。
