@@ -55,3 +55,7 @@
 
 # Ignore local practice audio files
 practice_audio_*.webm
+
+# Claude Code（ローカル専用）
+/.claude/worktrees/
+/.claude/settings.local.json
