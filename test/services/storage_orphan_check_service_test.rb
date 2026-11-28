@@ -1,5 +1,6 @@
 require "test_helper"
 require "tmpdir"
+require "active_storage/service/disk_service"
 
 class StorageOrphanCheckServiceTest < ActiveSupport::TestCase
   SERVICE_NAME = "storage_orphan_check_test".freeze
